@@ -85,3 +85,43 @@ export interface AIAskResponse {
   provider: string
   answer: string
 }
+
+export interface EmailRecipientOut {
+  id: number
+  email: string
+  name: string | null
+  active: boolean
+}
+
+export interface EmailTemplateOut {
+  id: number
+  name: string
+  subject: string
+  body_html: string
+  updated_at: string
+}
+
+export interface EmailCredentialsOut {
+  configured: boolean
+  gmail_address: string | null
+}
+
+export interface EmailLogOut {
+  sent_at: string
+  template_name: string | null
+  recipient: string
+  status: string
+  message: string | null
+}
+
+export interface EmailSendResult {
+  recipient: string
+  status: string
+  message: string | null
+}
+
+export interface EmailSendResponse {
+  sent: number
+  failed: number
+  results: EmailSendResult[]
+}

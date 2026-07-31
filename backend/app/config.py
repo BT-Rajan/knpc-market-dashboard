@@ -39,6 +39,13 @@ if not SESSION_SECRET:
     sys.exit("FATAL: SESSION_SECRET must be set in .env (long random string).")
 SESSION_TTL_HOURS = 12
 
+# --- Encryption at rest for admin-entered secrets (Gmail app password).
+# Fernet key -- generate with:
+#   python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
+ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", "")
+if not ENCRYPTION_KEY:
+    sys.exit("FATAL: ENCRYPTION_KEY must be set in .env (Fernet key -- see .env.example).")
+
 # --- CORS: internal tool served as a monolith in prod, so same-origin is
 # the norm. Only widen this if the frontend is genuinely hosted separately.
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
@@ -71,6 +78,10 @@ DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "")
 CLAUDE_API_URL = os.getenv("CLAUDE_API_URL", "https://api.anthropic.com/v1/messages")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5")
+
+# --- Email (Gmail SMTP) ---
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 587
 
 # --- Item catalog (top-level nav: category -> items) ---
 # Seeded into the DB on first boot; admins can add/disable further items

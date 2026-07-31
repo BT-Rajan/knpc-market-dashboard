@@ -107,3 +107,50 @@ class AICredentials(Base):
     deepseek_api_key = Column(String(200), nullable=True)
     claude_api_key = Column(String(200), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EmailRecipient(Base):
+    """One entry in the report/alert distribution list."""
+    __tablename__ = "email_recipients"
+
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), unique=True, nullable=False)
+    name = Column(String(120), nullable=True)
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class EmailTemplate(Base):
+    """A reusable email body/subject with {{placeholder}} substitution."""
+    __tablename__ = "email_templates"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(120), unique=True, nullable=False)
+    subject = Column(String(300), nullable=False)
+    body_html = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EmailCredentials(Base):
+    """Admin-entered Gmail SMTP sender account. app_password is encrypted
+    at rest (see app/crypto.py) -- this is a real mailbox credential, not
+    just an API key. Single-row table (id=1)."""
+    __tablename__ = "email_credentials"
+
+    id = Column(Integer, primary_key=True)
+    gmail_address = Column(String(255), nullable=True)
+    gmail_app_password_encrypted = Column(String(500), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class EmailLog(Base):
+    """Per-recipient send audit trail."""
+    __tablename__ = "email_log"
+
+    id = Column(Integer, primary_key=True)
+    sent_at = Column(DateTime, default=datetime.utcnow)
+    template_name = Column(String(120), nullable=True)
+    recipient = Column(String(255), nullable=False)
+    status = Column(String(20), nullable=False)  # success | error
+    message = Column(Text, nullable=True)

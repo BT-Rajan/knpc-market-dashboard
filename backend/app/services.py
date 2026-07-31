@@ -2,8 +2,9 @@ from datetime import date, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
-from app.models import Item, PriceHistory, NewsItem, AICredentials
+from app.models import Item, PriceHistory, NewsItem, AICredentials, EmailCredentials
 from app.config import DEEPSEEK_API_KEY, CLAUDE_API_KEY
+from app.crypto import decrypt
 
 
 def get_item_by_code_or_404(db: Session, code: str) -> Item:
@@ -94,3 +95,22 @@ def resolve_ai_key(db: Session, provider: str) -> str:
     if provider == "claude":
         return row.claude_api_key or CLAUDE_API_KEY
     return ""
+
+
+def get_email_credentials_row(db: Session) -> EmailCredentials:
+    row = db.query(EmailCredentials).first()
+    if not row:
+        row = EmailCredentials()
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    return row
+
+
+def resolve_email_credentials(db: Session) -> tuple[str, str]:
+    """Returns (gmail_address, gmail_app_password) with the password
+    decrypted from storage. Empty strings if not configured."""
+    row = get_email_credentials_row(db)
+    address = row.gmail_address or ""
+    password = decrypt(row.gmail_app_password_encrypted or "") if row.gmail_app_password_encrypted else ""
+    return address, password

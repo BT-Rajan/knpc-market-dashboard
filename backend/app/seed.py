@@ -11,7 +11,7 @@ by hand via the admin panel.
 import re
 
 from app.db import SessionLocal
-from app.models import Item, Source, ScrapeSetting
+from app.models import Item, Source, ScrapeSetting, EmailTemplate
 from app.config import (
     SEED_CATALOG, DEFAULT_SCRAPE_FREQUENCY_MINUTES,
     SOURCE_URLS, YAHOO_TICKERS,
@@ -91,11 +91,36 @@ def _seed_sources_for_item(db, item):
         return
 
 
+def _seed_email_templates(db):
+    defaults = [
+        (
+            "Quarterly Report",
+            "{{quarter}} {{year}} KNPC Market Intelligence Report",
+            "<p>Dear {{recipient_name}},</p>"
+            "<p>Please find attached the {{quarter}} {{year}} Market Intelligence Report "
+            "for the Marketing Operations Group.</p>"
+            "<p>Regards,<br>KNPC Market Intelligence Dashboard</p>",
+        ),
+        (
+            "Price Alert",
+            "KNPC Price Alert: {{item_name}}",
+            "<p>Dear {{recipient_name}},</p>"
+            "<p>{{item_name}} moved to {{price}} {{unit}} ({{change_pct}}% change).</p>"
+            "<p>Regards,<br>KNPC Market Intelligence Dashboard</p>",
+        ),
+    ]
+    for name, subject, body_html in defaults:
+        if not db.query(EmailTemplate).filter(EmailTemplate.name == name).first():
+            db.add(EmailTemplate(name=name, subject=subject, body_html=body_html))
+
+
 def seed():
     db = SessionLocal()
     try:
         if not db.query(ScrapeSetting).first():
             db.add(ScrapeSetting(frequency_minutes=DEFAULT_SCRAPE_FREQUENCY_MINUTES))
+
+        _seed_email_templates(db)
 
         for category, items in SEED_CATALOG.items():
             for spec in items:

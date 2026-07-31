@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr
 
 
 class LoginRequest(BaseModel):
@@ -148,3 +148,92 @@ class AICredentialsOut(BaseModel):
 class AICredentialsUpdate(BaseModel):
     deepseek_api_key: Optional[str] = None
     claude_api_key: Optional[str] = None
+
+
+# --- Email distribution list ---
+
+class EmailRecipientBase(BaseModel):
+    email: EmailStr
+    name: Optional[str] = None
+    active: bool = True
+
+
+class EmailRecipientCreate(EmailRecipientBase):
+    pass
+
+
+class EmailRecipientUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    name: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class EmailRecipientOut(EmailRecipientBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+
+
+# --- Email templates ---
+
+class EmailTemplateBase(BaseModel):
+    name: str
+    subject: str
+    body_html: str
+
+
+class EmailTemplateCreate(EmailTemplateBase):
+    pass
+
+
+class EmailTemplateUpdate(BaseModel):
+    name: Optional[str] = None
+    subject: Optional[str] = None
+    body_html: Optional[str] = None
+
+
+class EmailTemplateOut(EmailTemplateBase):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    updated_at: datetime
+
+
+# --- Gmail sender credentials ---
+
+class EmailCredentialsOut(BaseModel):
+    configured: bool
+    gmail_address: Optional[str] = None
+
+
+class EmailCredentialsUpdate(BaseModel):
+    gmail_address: Optional[str] = None
+    gmail_app_password: Optional[str] = None
+
+
+# --- Sending ---
+
+class EmailSendRequest(BaseModel):
+    template_id: int
+    recipient_ids: List[int]
+    variables: dict[str, str] = {}
+    attach_report_filename: Optional[str] = None
+
+
+class EmailSendResult(BaseModel):
+    recipient: str
+    status: str  # "success" | "error"
+    message: Optional[str] = None
+
+
+class EmailSendResponse(BaseModel):
+    sent: int
+    failed: int
+    results: List[EmailSendResult]
+
+
+class EmailLogOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    sent_at: datetime
+    template_name: Optional[str] = None
+    recipient: str
+    status: str
+    message: Optional[str] = None

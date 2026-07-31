@@ -9,7 +9,7 @@ from app.db import Base, engine
 from app.config import ALLOWED_ORIGINS
 from app.seed import seed
 from app.scraper import scheduler as scrape_scheduler
-from app.routers import auth, dashboard, admin, export, ai, reports
+from app.routers import auth, dashboard, admin, export, ai, reports, email
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -29,6 +29,7 @@ app.include_router(admin.router)
 app.include_router(export.router)
 app.include_router(ai.router)
 app.include_router(reports.router)
+app.include_router(email.router)
 
 
 @app.on_event("startup")
