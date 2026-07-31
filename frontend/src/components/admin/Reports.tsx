@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api } from '../../api/client'
+import { api, getToken } from '../../api/client'
 
 interface BenchmarkStat {
   name: string
@@ -109,7 +109,17 @@ export default function Reports() {
 
   const downloadReport = async (filename: string) => {
     try {
-      window.location.href = `/api/reports/download/${encodeURIComponent(filename)}`
+      const resp = await fetch(`/api/reports/download/${encodeURIComponent(filename)}`, {
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`)
+      const blob = await resp.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
     } catch (err) {
       setMessage(`Error downloading report: ${err}`)
     }
