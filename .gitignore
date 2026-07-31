@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .env
+backend/venv/
 backend/logs/
 backend/tmp_exports/
 backend/exports/
@@ -9,3 +10,5 @@ frontend/dist/
 *.db
 .DS_Store
 frontend/tsconfig.app.tsbuildinfo
+.vscode/
+.idea/

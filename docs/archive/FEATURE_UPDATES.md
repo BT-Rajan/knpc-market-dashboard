@@ -1,5 +1,10 @@
 # KNPC Dashboard - Feature Updates Summary
 
+> **Historical snapshot** — from when `feature/monolith-rebuild` was being
+> brought to parity with the old repo's `main` branch, before that work was
+> consolidated into this repo. The branch names below no longer exist here.
+> Kept for reference only. See the root `README.md` for current setup.
+
 ## Overview
 Updated `feature/monolith-rebuild` branch to achieve feature parity with `main` branch by adding missing functionality.
 

@@ -1,5 +1,10 @@
 # 🔍 KNPC Dashboard - Build, Lint & Installer Check Report
 
+> **Historical snapshot** — recorded July 30, 2026, before the news feed,
+> report generation, and email features were added. Kept for reference
+> only; it does not reflect the current codebase. See the root `README.md`
+> for current setup.
+
 **Date**: July 30, 2026  
 **Platform Tested**: Ubuntu 24.04 (Linux)  
 **Status**: ✅ **ALL CHECKS PASSED**
