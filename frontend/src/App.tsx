@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { api, clearSession, getRole, getToken, getUsername } from './api/client'
-import { NavCategory } from './types'
+import { NavCategory, NewsOut } from './types'
 import Login from './components/Login'
 import Ticker from './components/Ticker'
 import NavBar from './components/NavBar'
 import ItemView from './components/ItemView'
+import NewsList from './components/NewsList'
 import AIPanel from './components/AIPanel'
 import AdminShell from './components/admin/AdminShell'
 
@@ -12,8 +13,9 @@ export default function App() {
   const [authed, setAuthed] = useState(!!getToken())
   const [categories, setCategories] = useState<NavCategory[]>([])
   const [selectedCode, setSelectedCode] = useState<string | null>(null)
-  const [view, setView] = useState<'dashboard' | 'admin'>('dashboard')
+  const [view, setView] = useState<'dashboard' | 'admin' | 'news'>('dashboard')
   const [aiOpen, setAiOpen] = useState(false)
+  const [marketNews, setMarketNews] = useState<NewsOut[]>([])
 
   useEffect(() => {
     if (!authed) return
@@ -25,6 +27,11 @@ export default function App() {
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed])
+
+  useEffect(() => {
+    if (!authed || view !== 'news') return
+    api.get<NewsOut[]>('/api/market-news').then(setMarketNews)
+  }, [authed, view])
 
   if (!authed) {
     return <Login onLoggedIn={() => setAuthed(true)} />
@@ -54,6 +61,10 @@ export default function App() {
       <div style={{ flex: 1 }}>
         {view === 'admin' ? (
           <AdminShell />
+        ) : view === 'news' ? (
+          <div style={{ padding: 24, maxWidth: 760, margin: '0 auto' }}>
+            <NewsList news={marketNews} />
+          </div>
         ) : selectedCode ? (
           <ItemView code={selectedCode} />
         ) : (

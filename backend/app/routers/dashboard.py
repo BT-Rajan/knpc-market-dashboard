@@ -8,9 +8,15 @@ from app.db import get_db
 from app.auth import get_current_user
 from app.models import Item
 from app.schemas import NavCategory, NavItem, TickerEntry, ItemDetail, NewsOut
-from app.services import get_item_by_code_or_404, price_series, trend_fields, recent_news
+from app.services import get_item_by_code_or_404, price_series, trend_fields, recent_news, general_market_news
 
 router = APIRouter(prefix="/api", tags=["dashboard"], dependencies=[Depends(get_current_user)])
+
+
+@router.get("/market-news", response_model=List[NewsOut])
+def get_market_news(db: Session = Depends(get_db)):
+    """Global news feed, independent of any single item's page."""
+    return [NewsOut.model_validate(n) for n in general_market_news(db)]
 
 
 @router.get("/nav", response_model=List[NavCategory])

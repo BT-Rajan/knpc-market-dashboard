@@ -64,6 +64,18 @@ def recent_news(db: Session, item_id: int, limit: int = 10):
     )
 
 
+def general_market_news(db: Session, limit: int = 20):
+    """Item-independent headlines (item_id is NULL) -- the global news feed,
+    separate from any single benchmark/product's page."""
+    return (
+        db.query(NewsItem)
+        .filter(NewsItem.item_id.is_(None))
+        .order_by(NewsItem.collected_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
 def get_ai_credentials_row(db: Session) -> AICredentials:
     row = db.query(AICredentials).first()
     if not row:

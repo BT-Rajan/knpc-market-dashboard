@@ -172,10 +172,17 @@ def get_product_stats(db: Session, year: int, quarter: str) -> list[dict]:
     return stats
 
 
-def get_recent_news(db: Session, limit: int = 20) -> list[dict]:
-    """Get recent news items."""
+def get_period_news(db: Session, year: int, quarter: str, limit: int = 20) -> list[dict]:
+    """News items collected within the report's quarter -- not just 'whatever
+    is newest right now', which would misrepresent a report generated for a
+    past period."""
+    start, end = get_quarter_date_range(year, quarter)
     items = (
         db.query(NewsItem)
+        .filter(
+            NewsItem.collected_at >= datetime.combine(start, datetime.min.time()),
+            NewsItem.collected_at <= datetime.combine(end, datetime.max.time()),
+        )
         .order_by(NewsItem.collected_at.desc())
         .limit(limit)
         .all()
@@ -204,7 +211,7 @@ def generate_quarterly_report(
     """
     b_stats = get_benchmark_stats(db, year, quarter)
     p_stats = get_product_stats(db, year, quarter)
-    news_items = get_recent_news(db, limit=20)
+    news_items = get_period_news(db, year, quarter, limit=20)
     
     doc = Document()
     doc.styles["Normal"].font.name = "Calibri"

@@ -6,8 +6,8 @@ interface Props {
   selectedCode: string | null
   onSelect: (code: string) => void
   role: string | null
-  view: 'dashboard' | 'admin'
-  onChangeView: (v: 'dashboard' | 'admin') => void
+  view: 'dashboard' | 'admin' | 'news'
+  onChangeView: (v: 'dashboard' | 'admin' | 'news') => void
   onAskAI: () => void
   onLogout: () => void
   username: string | null
@@ -115,6 +115,12 @@ export default function NavBar({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button
+          className={view === 'news' ? 'btn btn-brass' : 'btn'}
+          onClick={() => onChangeView(view === 'news' ? 'dashboard' : 'news')}
+        >
+          Market News
+        </button>
         <button className="btn" onClick={onAskAI}>Ask AI</button>
         {role === 'admin' && (
           <button
