@@ -1,103 +1,89 @@
 #!/usr/bin/env bash
 # KNPC Market Intelligence Dashboard - Linux/macOS installer.
-# Assumes the MySQL DB/user already exist (see backend/schema.sql to create
-# them). Reads DB + admin credentials from the environment or prompts for
-# them -- never hardcode credentials in this script.
+# Prerequisites: Python 3.10+, Node.js 18+, a reachable MySQL Server with a
+# user/password that can create databases. No mysql.exe/mysql CLI required --
+# the database is created via pymysql (see backend/tools/bootstrap_env.py).
 set -euo pipefail
 
-DB_HOST="${DB_HOST:-localhost}"
-DB_PORT="${DB_PORT:-3306}"
-DB_NAME="${DB_NAME:-knpc_dashboard}"
 BACKEND_PORT="${BACKEND_PORT:-8000}"
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
+ENV_FILE="$BACKEND_DIR/.env"
 
-fail() { echo "FAILED: $1" >&2; exit 1; }
+fail() { echo "[ERROR] $1" >&2; exit 1; }
 
-prompt() { # prompt VAR_NAME "Question" [default]
-    local __var="$1" __q="$2" __default="${3:-}" __val=""
-    if [ -n "${!__var:-}" ]; then return; fi
-    read -r -p "$__q${__default:+ [$__default]}: " __val
-    printf -v "$__var" '%s' "${__val:-$__default}"
-}
-
-prompt_secret() { # prompt_secret VAR_NAME "Question"
-    local __var="$1" __q="$2" __val=""
-    if [ -n "${!__var:-}" ]; then return; fi
-    read -r -s -p "$__q: " __val
-    echo
-    printf -v "$__var" '%s' "$__val"
-}
-
-for bin in mysql python3 npm; do
+for bin in python3 npm; do
   command -v "$bin" >/dev/null || fail "$bin not installed"
 done
 
-echo "==> [1/6] Database connection"
-prompt DB_USER "MySQL user for this app"
-prompt_secret DB_PASSWORD "MySQL password for $DB_USER"
-mysql -u "$DB_USER" -p"$DB_PASSWORD" -h "$DB_HOST" "$DB_NAME" -e "SELECT 1;" \
-  || fail "cannot connect as $DB_USER to $DB_NAME -- check credentials/grants (see backend/schema.sql)"
+NEED_ENV_BOOTSTRAP=0
+if [ -f "$ENV_FILE" ]; then
+    echo "[OK] backend/.env already exists - skipping configuration prompts."
+    echo "     Delete backend/.env and re-run this installer to reconfigure."
+else
+    NEED_ENV_BOOTSTRAP=1
+    echo "==> Configuration - this runs once and is saved to backend/.env"
+    read -r -p "MySQL host [localhost]: " DB_HOST; DB_HOST="${DB_HOST:-localhost}"
+    read -r -p "MySQL port [3306]: " DB_PORT; DB_PORT="${DB_PORT:-3306}"
+    read -r -p "Database name [knpc_dashboard]: " DB_NAME; DB_NAME="${DB_NAME:-knpc_dashboard}"
+    read -r -p "MySQL user [root]: " DB_USER; DB_USER="${DB_USER:-root}"
+    read -r -s -p "MySQL password (blank if none): " DB_PASSWORD; echo
+    while true; do
+        read -r -s -p "New password for the 'admin' account (required): " ADMIN_PASSWORD; echo
+        [ -n "$ADMIN_PASSWORD" ] && break
+        echo "This value is required."
+    done
+    while true; do
+        read -r -s -p "New password for the 'user' (viewer) account (required): " USER_PASSWORD; echo
+        [ -n "$USER_PASSWORD" ] && break
+        echo "This value is required."
+    done
+    read -r -p "DeepSeek API key (optional, press Enter to skip): " DEEPSEEK_API_KEY
+    read -r -p "Claude API key (optional, press Enter to skip): " CLAUDE_API_KEY
+fi
 
-echo "==> [2/6] Admin account setup"
-prompt_secret ADMIN_PASSWORD "Password for the 'admin' account"
-prompt_secret USER_PASSWORD "Password for the 'user' (viewer) account"
-
-echo "==> [3/6] Generating backend/.env"
+echo "==> Backend setup (FastAPI)"
 cd "$BACKEND_DIR"
-mkdir -p logs tmp_exports
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip -q
-pip install -r requirements.txt -q
+echo "Installing Python dependencies..."
+pip install -r requirements.txt || fail "pip install failed -- see output above"
+echo "[OK] Python dependencies installed"
 
-SESSION_SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')"
-ENCRYPTION_KEY="$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
-ADMIN_PASSWORD_HASH="$(python3 -c "import bcrypt,sys; print(bcrypt.hashpw(sys.argv[1].encode(), bcrypt.gensalt()).decode())" "$ADMIN_PASSWORD")"
-USER_PASSWORD_HASH="$(python3 -c "import bcrypt,sys; print(bcrypt.hashpw(sys.argv[1].encode(), bcrypt.gensalt()).decode())" "$USER_PASSWORD")"
+if [ "$NEED_ENV_BOOTSTRAP" = "1" ]; then
+    echo "Generating backend/.env and creating the database..."
+    DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_NAME="$DB_NAME" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" \
+    ADMIN_PASSWORD="$ADMIN_PASSWORD" USER_PASSWORD="$USER_PASSWORD" \
+    DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-}" CLAUDE_API_KEY="${CLAUDE_API_KEY:-}" \
+        python tools/bootstrap_env.py || fail "failed to generate backend/.env -- see output above"
+    unset DB_PASSWORD ADMIN_PASSWORD USER_PASSWORD
+fi
 
-cat > "$BACKEND_DIR/.env" <<ENV
-DB_HOST=${DB_HOST}
-DB_PORT=${DB_PORT}
-DB_NAME=${DB_NAME}
-DB_USER=${DB_USER}
-DB_PASSWORD=${DB_PASSWORD}
-SESSION_SECRET=${SESSION_SECRET}
-ENCRYPTION_KEY=${ENCRYPTION_KEY}
-ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
-USER_PASSWORD_HASH=${USER_PASSWORD_HASH}
-ALLOWED_ORIGINS=http://localhost:5173
-SCRAPE_FREQUENCY_MINUTES=30
-DEEPSEEK_API_KEY=
-CLAUDE_API_KEY=
-ENV
-unset ADMIN_PASSWORD USER_PASSWORD DB_PASSWORD
-echo "[OK] backend/.env written (Gmail sending is configured later, from Admin -> Email in the app)"
+echo "Verifying Python imports..."
+python -c "from app.main import app; print('[OK] FastAPI app imports successfully')" \
+  || fail "app failed to import -- check backend/.env"
 
-echo "==> [4/6] Verifying the app imports with this config"
-python -c "from app.main import app" || fail "app failed to import -- check backend/.env"
+mkdir -p logs tmp_exports
 deactivate
 
-echo "==> [5/6] Frontend build (served by FastAPI as static files)"
+echo "==> Frontend setup (React + Vite)"
 cd "$FRONTEND_DIR"
-npm install --silent
-npm run build
+npm install --silent || fail "npm install failed"
+npm run build || fail "frontend build failed"
 [ -d "$FRONTEND_DIR/dist" ] || fail "frontend build did not produce dist/"
+echo "[OK] Frontend built successfully"
 
-echo "==> [6/6] Starting the backend"
-cd "$BACKEND_DIR"
-source venv/bin/activate
-nohup python run.py > "$BACKEND_DIR/logs/server.log" 2>&1 &
-BACKEND_PID=$!
-deactivate
-sleep 2
-
-echo "==> Health check"
-curl -sf "http://127.0.0.1:${BACKEND_PORT}/api/health" \
-  && echo -e "\nOK - serving on :${BACKEND_PORT} (pid $BACKEND_PID)" \
-  || fail "backend not responding -- check $BACKEND_DIR/logs/server.log"
-
+echo
+echo "==> Installation complete."
+echo "Gmail sending is NOT set here -- log in as admin and set it under"
+echo "Admin -> Email -> Gmail Settings (uses an App Password, not your"
+echo "account password)."
+echo
+echo "Start it:"
+echo "  cd backend && source venv/bin/activate && python run.py"
+echo "  (serves on :${BACKEND_PORT}, including the built frontend)"
+echo
 echo "For production process management (auto-restart, log rotation), run"
-echo "this under systemd or pm2 instead of the background nohup above."
+echo "this under systemd or pm2 instead of a plain foreground process."
