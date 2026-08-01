@@ -68,6 +68,9 @@ if [ -f "$ENV_FILE" ]; then
     [ -n "$EXISTING_PORT" ] && BACKEND_PORT="$EXISTING_PORT"
 fi
 
+echo "==> Syncing project port defaults to :${BACKEND_PORT}"
+"$ROOT_DIR/scripts/set_port.sh" "$BACKEND_PORT" || fail "set_port.sh failed"
+
 echo "Verifying Python imports..."
 python -c "from app.main import app; print('[OK] FastAPI app imports successfully')" \
   || fail "app failed to import -- check backend/.env"
@@ -84,14 +87,57 @@ npm run build || fail "frontend build failed"
 echo "[OK] Frontend built successfully"
 
 echo
-echo "==> Installation complete."
+echo "==> Process management (pm2)"
+if ! command -v pm2 >/dev/null; then
+    echo "pm2 not found -- installing globally via npm..."
+    npm install -g pm2 || fail "failed to install pm2"
+fi
+cd "$ROOT_DIR"
+if pm2 describe knpc-dashboard >/dev/null 2>&1; then
+    pm2 restart knpc-dashboard
+else
+    pm2 start ecosystem.config.js
+fi
+pm2 save
+
+echo
+echo "==> Firewall (ufw)"
+if command -v ufw >/dev/null; then
+    if [ "$(id -u)" -eq 0 ]; then
+        ufw allow "${BACKEND_PORT}/tcp"
+        ufw reload
+    else
+        sudo ufw allow "${BACKEND_PORT}/tcp"
+        sudo ufw reload
+    fi
+    echo "[OK] port ${BACKEND_PORT}/tcp allowed and ufw reloaded"
+else
+    echo "ufw not found on this host -- skipping (not fatal; open port ${BACKEND_PORT} some other way if needed)"
+fi
+
+echo
+echo "==> pm2 status"
+sleep 2
+pm2 status knpc-dashboard
+
+echo
+echo "==> pm2 logs (last 40 lines)"
+pm2 logs knpc-dashboard --lines 40 --nostream
+
+echo
+echo "==> Health check"
+if curl -sf "http://127.0.0.1:${BACKEND_PORT}/api/health" >/dev/null; then
+    echo "[OK] responding on :${BACKEND_PORT} -- installation looks healthy."
+else
+    echo "[WARN] not responding on :${BACKEND_PORT} yet -- check the pm2 logs above."
+fi
+
+echo
 echo "Gmail sending is NOT set here -- log in as admin and set it under"
 echo "Admin -> Email -> Gmail Settings (uses an App Password, not your"
 echo "account password)."
 echo
-echo "Start it:"
-echo "  cd backend && source venv/bin/activate && python run.py"
-echo "  (serves on :${BACKEND_PORT}, including the built frontend)"
-echo
-echo "For production process management (auto-restart, log rotation), run"
-echo "this under systemd or pm2 instead of a plain foreground process."
+echo "Useful commands:"
+echo "  pm2 logs knpc-dashboard      # tail logs"
+echo "  pm2 restart knpc-dashboard   # restart after a config change"
+echo "  pm2 status                  # process status"

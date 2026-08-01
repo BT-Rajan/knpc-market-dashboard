@@ -25,7 +25,14 @@ news, reports). Credentials are bcrypt hashes set via environment.
 Either run `scripts/install.sh` (Linux/macOS) or `scripts/install.bat`
 (Windows) — both create the venv, write `backend/.env` (prompting for DB
 and admin credentials, generating `SESSION_SECRET`/`ENCRYPTION_KEY`/password
-hashes), and build the frontend.
+hashes), build the frontend, and set the app's port to match everywhere
+(via `scripts/set_port.sh`, default 8585). `install.sh` also brings the
+app up under pm2 (`ecosystem.config.js`), opens the port through `ufw` if
+present, and prints the pm2 logs + a health check at the end.
+
+To change the port later: `scripts/set_port.sh <port>`, then
+`pm2 restart knpc-dashboard` (and `ufw allow <port>/tcp && ufw reload` if
+you're behind ufw).
 
 Or manually:
 ```
