@@ -50,6 +50,10 @@ if not ENCRYPTION_KEY:
 # the norm. Only widen this if the frontend is genuinely hosted separately.
 ALLOWED_ORIGINS = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "http://localhost:5173").split(",") if o.strip()]
 
+# --- Server port (uvicorn). Single source of truth -- run.py reads this
+# instead of hardcoding a port; scripts/set_port.sh updates this default.
+PORT = int(os.getenv("PORT", "8585"))
+
 # --- Database (MySQL) ---
 DB_HOST = os.getenv("DB_HOST", "localhost")
 DB_PORT = os.getenv("DB_PORT", "3306")

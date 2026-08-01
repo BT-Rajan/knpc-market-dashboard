@@ -5,7 +5,7 @@
 # the database is created via pymysql (see backend/tools/bootstrap_env.py).
 set -euo pipefail
 
-BACKEND_PORT="${BACKEND_PORT:-8000}"
+BACKEND_PORT="${BACKEND_PORT:-8585}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="$ROOT_DIR/backend"
 FRONTEND_DIR="$ROOT_DIR/frontend"
@@ -29,6 +29,7 @@ else
     read -r -p "Database name [knpc_dashboard]: " DB_NAME; DB_NAME="${DB_NAME:-knpc_dashboard}"
     read -r -p "MySQL user [root]: " DB_USER; DB_USER="${DB_USER:-root}"
     read -r -s -p "MySQL password (blank if none): " DB_PASSWORD; echo
+    read -r -p "App port [${BACKEND_PORT}]: " APP_PORT; APP_PORT="${APP_PORT:-$BACKEND_PORT}"
     while true; do
         read -r -s -p "New password for the 'admin' account (required): " ADMIN_PASSWORD; echo
         [ -n "$ADMIN_PASSWORD" ] && break
@@ -55,10 +56,16 @@ echo "[OK] Python dependencies installed"
 if [ "$NEED_ENV_BOOTSTRAP" = "1" ]; then
     echo "Generating backend/.env and creating the database..."
     DB_HOST="$DB_HOST" DB_PORT="$DB_PORT" DB_NAME="$DB_NAME" DB_USER="$DB_USER" DB_PASSWORD="$DB_PASSWORD" \
-    ADMIN_PASSWORD="$ADMIN_PASSWORD" USER_PASSWORD="$USER_PASSWORD" \
+    ADMIN_PASSWORD="$ADMIN_PASSWORD" USER_PASSWORD="$USER_PASSWORD" PORT="$APP_PORT" \
     DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-}" CLAUDE_API_KEY="${CLAUDE_API_KEY:-}" \
         python tools/bootstrap_env.py || fail "failed to generate backend/.env -- see output above"
     unset DB_PASSWORD ADMIN_PASSWORD USER_PASSWORD
+    BACKEND_PORT="$APP_PORT"
+fi
+
+if [ -f "$ENV_FILE" ]; then
+    EXISTING_PORT="$(grep -m1 '^PORT=' "$ENV_FILE" | cut -d= -f2)"
+    [ -n "$EXISTING_PORT" ] && BACKEND_PORT="$EXISTING_PORT"
 fi
 
 echo "Verifying Python imports..."
@@ -70,6 +77,7 @@ deactivate
 
 echo "==> Frontend setup (React + Vite)"
 cd "$FRONTEND_DIR"
+echo "BACKEND_PORT=${BACKEND_PORT}" > .env
 npm install --silent || fail "npm install failed"
 npm run build || fail "frontend build failed"
 [ -d "$FRONTEND_DIR/dist" ] || fail "frontend build did not produce dist/"

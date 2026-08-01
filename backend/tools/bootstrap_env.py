@@ -9,7 +9,7 @@ database if it doesn't exist yet, and writes backend/.env.
 Required env vars: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD (may
 be empty string), ADMIN_PASSWORD, USER_PASSWORD.
 Optional: DEEPSEEK_API_KEY, CLAUDE_API_KEY, ALLOWED_ORIGINS,
-SCRAPE_FREQUENCY_MINUTES.
+SCRAPE_FREQUENCY_MINUTES, PORT (see app/config.py for the default).
 
 Idempotent: if backend/.env already exists, does nothing and exits 0 --
 the installer is expected to check for this too, but this script checks
@@ -93,6 +93,7 @@ def main() -> None:
 
     allowed_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:5173")
     scrape_frequency = os.environ.get("SCRAPE_FREQUENCY_MINUTES", "30")
+    port = os.environ.get("PORT", "8585")
     deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
     claude_key = os.environ.get("CLAUDE_API_KEY", "")
 
@@ -102,6 +103,7 @@ DB_NAME={db_name}
 DB_USER={db_user}
 DB_PASSWORD={db_password}
 
+PORT={port}
 SCRAPE_FREQUENCY_MINUTES={scrape_frequency}
 
 SESSION_SECRET={session_secret}

@@ -78,6 +78,8 @@ if exist "%ENV_FILE%" (
     set /p "DB_USER_IN=MySQL user [root]: "
     set "DB_PASSWORD_IN="
     set /p "DB_PASSWORD_IN=MySQL password (blank if none): "
+    set "APP_PORT_IN=8585"
+    set /p "APP_PORT_IN=App port [8585]: "
 
     :ask_admin_pw
     set "ADMIN_PASSWORD_IN="
@@ -162,6 +164,7 @@ if "%NEED_ENV_BOOTSTRAP%"=="1" (
     set "DB_PASSWORD=%DB_PASSWORD_IN%"
     set "ADMIN_PASSWORD=%ADMIN_PASSWORD_IN%"
     set "USER_PASSWORD=%USER_PASSWORD_IN%"
+    set "PORT=%APP_PORT_IN%"
     set "DEEPSEEK_API_KEY=%DEEPSEEK_KEY_IN%"
     set "CLAUDE_API_KEY=%CLAUDE_KEY_IN%"
     python tools\bootstrap_env.py
@@ -188,6 +191,13 @@ if !errorlevel! neq 0 (
 
 cd /d "%ROOT_DIR%"
 
+set "DISPLAY_PORT=8585"
+if "%NEED_ENV_BOOTSTRAP%"=="1" (
+    set "DISPLAY_PORT=%APP_PORT_IN%"
+) else (
+    for /f "tokens=2 delims==" %%p in ('findstr /b "PORT=" "%ENV_FILE%"') do set "DISPLAY_PORT=%%p"
+)
+
 echo.
 echo ============================================================================
 echo Setting up Frontend (React + Vite)
@@ -195,6 +205,7 @@ echo ===========================================================================
 echo.
 
 cd /d "%ROOT_DIR%frontend"
+echo BACKEND_PORT=%DISPLAY_PORT%> .env
 
 echo Installing Node.js dependencies...
 echo This may take a few minutes...
@@ -230,7 +241,7 @@ echo   1. Open PowerShell
 echo   2. Run: cd backend
 echo   3. Run: .\venv\Scripts\Activate.ps1
 echo   4. Run: python run.py
-echo   5. Backend will start on http://localhost:8000
+echo   5. Backend will start on http://localhost:%DISPLAY_PORT%
 echo.
 echo Start Frontend (in new PowerShell window, dev mode):
 echo   1. Open PowerShell
