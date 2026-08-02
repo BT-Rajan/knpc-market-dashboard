@@ -57,9 +57,23 @@ def send_email(
             server.login(gmail_address, gmail_app_password)
             server.sendmail(gmail_address, to_address, msg.as_string())
     except smtplib.SMTPAuthenticationError as exc:
+        code = getattr(exc, "smtp_code", None)
+        raw = getattr(exc, "smtp_error", b"")
+        google_detail = raw.decode(errors="replace").strip() if isinstance(raw, bytes) else str(raw).strip()
         raise EmailSendError(
-            "Gmail rejected the credentials -- use an App Password "
-            "(Google Account -> Security -> 2-Step Verification -> App passwords), not the account password."
+            f"Gmail rejected the login (SMTP {code}): {google_detail}\n"
+            "Common causes: (1) the account password was used instead of a "
+            "16-character App Password -- Google Account -> Security -> "
+            "2-Step Verification -> App passwords; (2) 2-Step Verification "
+            "isn't actually turned on for this account, so App Passwords "
+            "were never really available; (3) on a Google Workspace account, "
+            "the admin has App Passwords disabled org-wide (Admin console -> "
+            "Apps -> Google Workspace -> Gmail -> ... -> allow per-user "
+            "application-specific passwords); (4) Google is blocking this "
+            "server's IP as a suspicious sign-in -- check for a 'Critical "
+            "security alert' email on the account, or sign in as that "
+            "account in a browser and visit "
+            "https://accounts.google.com/DisplayUnlockCaptcha ."
         ) from exc
     except smtplib.SMTPException as exc:
         raise EmailSendError(str(exc)) from exc
