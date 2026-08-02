@@ -145,10 +145,11 @@ def collect_general_market_news(db: Session, limit: int = 20):
         item_by_name = {i.name.strip().lower(): i for i in items}
         api_key = resolve_ai_key(db, "deepseek")
 
-        grouping = classify_urls([t["url"] for t in topics], [i.name for i in items], api_key)
+        grouping, classify_status = classify_urls([t["url"] for t in topics], [i.name for i in items], api_key)
         topic_by_url = {t["url"]: t for t in topics}
 
         count = 0
+        item_matches = 0
         for url in grouping.get("general", []):
             topic = topic_by_url.get(url)
             if not topic:
@@ -165,11 +166,19 @@ def collect_general_market_news(db: Session, limit: int = 20):
                 # An item name the model invented/misspelled shouldn't drop
                 # the headline -- file it as general instead of losing it.
                 target_item_id = item.id if item else None
+                if target_item_id:
+                    item_matches += 1
                 _save_news(db, target_item_id, topic["title"], topic["url"], "OilPrice")
                 count += 1
 
         db.commit()
-        _log(db, None, "OilPrice (general)", "success", f"logged={count} of {len(topics)} topics fetched")
+        if classify_status == "no_api_key":
+            status_note = "no DeepSeek key configured (Admin -> AI Settings) -- filed all as general"
+        elif classify_status == "ok":
+            status_note = f"DeepSeek classified {item_matches} to a specific item, rest general"
+        else:
+            status_note = f"DeepSeek classification failed ({classify_status}) -- filed all as general"
+        _log(db, None, "OilPrice (general)", "success", f"logged={count} of {len(topics)} topics fetched; {status_note}")
         return count
     except Exception as exc:
         db.rollback()

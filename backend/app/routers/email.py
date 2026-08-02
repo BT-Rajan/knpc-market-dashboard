@@ -194,10 +194,12 @@ def send_to_distribution_list(body: EmailSendRequest, db: Session = Depends(get_
         variables = {**body.variables, "recipient_name": recipient.name or recipient.email}
         subject = render_template(template.subject, variables)
         body_html = render_template(template.body_html, variables)
+        unfilled = sorted(set(re.findall(r"\{\{\s*(\w+)\s*\}\}", subject + " " + body_html)))
+        unfilled_note = f"unfilled placeholders: {', '.join(unfilled)}" if unfilled else None
         try:
             send_email(gmail_address, gmail_app_password, recipient.email, subject, body_html, attachment_path)
-            db.add(EmailLog(template_name=template.name, recipient=recipient.email, status="success"))
-            results.append(EmailSendResult(recipient=recipient.email, status="success"))
+            db.add(EmailLog(template_name=template.name, recipient=recipient.email, status="success", message=unfilled_note))
+            results.append(EmailSendResult(recipient=recipient.email, status="success", message=unfilled_note))
             credentials_row.last_success_at = datetime.utcnow()
             credentials_row.consecutive_failures = 0
             sent += 1

@@ -13,14 +13,20 @@ from app.config import DEEPSEEK_API_URL, DEEPSEEK_MODEL
 logger = logging.getLogger("knpc.ai_news")
 
 
-def classify_urls(urls: list[str], item_names: list[str], api_key: str) -> dict:
-    """Returns {"general": [...], "items": {name: [...]}}.
+def classify_urls(urls: list[str], item_names: list[str], api_key: str) -> tuple[dict, str]:
+    """Returns (grouping, status). grouping is {"general": [...], "items":
+    {name: [...]}}. status is "ok", "no_api_key" (nothing configured under
+    Admin -> AI Settings), or "error: <detail>" (the call/parse failed) --
+    callers should log this so 'everything landed in general' has a visible
+    reason instead of looking identical to a real classification.
     Only the URLs are sent to the model -- no scraped article text/titles --
     since the URL slug alone is normally enough to tell what an oilprice.com
     piece is about."""
     fallback = {"general": list(urls), "items": {}}
-    if not api_key or not urls:
-        return fallback
+    if not urls:
+        return fallback, "ok"
+    if not api_key:
+        return fallback, "no_api_key"
 
     prompt = (
         "You will be given a JSON array of oilprice.com article URLs. "
@@ -56,7 +62,7 @@ def classify_urls(urls: list[str], item_names: list[str], api_key: str) -> dict:
         parsed = json.loads(content)
         if not isinstance(parsed, dict) or "general" not in parsed or "items" not in parsed:
             raise ValueError(f"unexpected shape: {parsed!r}")
-        return parsed
+        return parsed, "ok"
     except Exception as exc:
         logger.warning("DeepSeek news classification failed, defaulting to general: %s", exc)
-        return fallback
+        return fallback, f"error: {exc}"

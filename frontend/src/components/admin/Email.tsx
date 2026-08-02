@@ -288,12 +288,24 @@ function GmailSettings() {
 
 // --- Send ---
 
+function detectPlaceholders(template: EmailTemplateOut | undefined): string[] {
+  if (!template) return []
+  const text = template.subject + ' ' + template.body_html
+  const found = new Set<string>()
+  const re = /\{\{\s*(\w+)\s*\}\}/g
+  let m
+  while ((m = re.exec(text)) !== null) {
+    if (m[1] !== 'recipient_name') found.add(m[1]) // auto-supplied server-side, not user input
+  }
+  return Array.from(found)
+}
+
 function Send() {
   const [recipients, setRecipients] = useState<EmailRecipientOut[]>([])
   const [templates, setTemplates] = useState<EmailTemplateOut[]>([])
   const [selectedRecipients, setSelectedRecipients] = useState<number[]>([])
   const [templateId, setTemplateId] = useState<number | null>(null)
-  const [variablesText, setVariablesText] = useState('quarter=Q1\nyear=2026')
+  const [vars, setVars] = useState<Record<string, string>>({})
   const [sending, setSending] = useState(false)
   const [result, setResult] = useState<EmailSendResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -306,21 +318,23 @@ function Send() {
     })
   }, [])
 
+  const selectedTemplate = templates.find((t) => t.id === templateId)
+  const placeholders = detectPlaceholders(selectedTemplate)
+
+  // Reset the variable inputs to match whichever template is now selected --
+  // otherwise leftover values from a previous template (or none at all) can
+  // silently go out unfilled, which is exactly what happened before this fix.
+  useEffect(() => {
+    setVars(Object.fromEntries(placeholders.map((p) => [p, ''])))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateId])
+
   function toggleRecipient(id: number) {
     setSelectedRecipients((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
   }
 
   function selectAllActive() {
     setSelectedRecipients(recipients.filter((r) => r.active).map((r) => r.id))
-  }
-
-  function parseVariables(): Record<string, string> {
-    const vars: Record<string, string> = {}
-    for (const line of variablesText.split('\n')) {
-      const idx = line.indexOf('=')
-      if (idx > 0) vars[line.slice(0, idx).trim()] = line.slice(idx + 1).trim()
-    }
-    return vars
   }
 
   async function send() {
@@ -332,7 +346,7 @@ function Send() {
       const res = await api.post<EmailSendResponse>('/api/admin/email/send', {
         template_id: templateId,
         recipient_ids: selectedRecipients,
-        variables: parseVariables(),
+        variables: vars,
       })
       setResult(res)
     } catch (e) {
@@ -376,12 +390,25 @@ function Send() {
       </div>
 
       <div className="panel" style={{ padding: 18 }}>
-        <div className="eyebrow" style={{ marginBottom: 12 }}>Template variables (one per line: key=value)</div>
-        <textarea
-          value={variablesText}
-          onChange={(e) => setVariablesText(e.target.value)}
-          style={{ ...inputStyle, minHeight: 90, fontFamily: 'monospace', fontSize: 13 }}
-        />
+        <div className="eyebrow" style={{ marginBottom: 12 }}>Template variables</div>
+        {placeholders.length === 0 ? (
+          <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>
+            This template has no variables besides the recipient's name (filled in automatically).
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {placeholders.map((p) => (
+              <div className="field" key={p}>
+                <label>{'{{' + p + '}}'}</label>
+                <input
+                  style={inputStyle}
+                  value={vars[p] ?? ''}
+                  onChange={(e) => setVars({ ...vars, [p]: e.target.value })}
+                />
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <button className="btn btn-brass" onClick={send} disabled={sending || !templateId || selectedRecipients.length === 0} style={{ padding: '10px' }}>
