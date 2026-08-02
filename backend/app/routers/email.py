@@ -1,3 +1,5 @@
+import re
+
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -19,6 +21,15 @@ from app.crypto import encrypt
 from app.config import REPORTS_DIR
 
 router = APIRouter(prefix="/api/admin/email", tags=["email"], dependencies=[Depends(get_current_admin)])
+
+
+def _normalize_app_password(raw: str) -> str:
+    """Google displays app passwords grouped like 'abcd efgh ijkl mnop'.
+    Strip every whitespace character (not just leading/trailing -- a plain
+    .strip() leaves internal spaces untouched) plus zero-width characters
+    that can survive a copy-paste and look identical to a real space."""
+    cleaned = re.sub(r"[\s\u200b\u200c\u200d\ufeff]+", "", raw)
+    return cleaned
 
 
 # --- Distribution list ---
@@ -118,7 +129,18 @@ def update_credentials(body: EmailCredentialsUpdate, db: Session = Depends(get_d
     if body.gmail_address is not None:
         row.gmail_address = body.gmail_address.strip() or None
     if body.gmail_app_password is not None:
-        row.gmail_app_password_encrypted = encrypt(body.gmail_app_password.strip()) if body.gmail_app_password.strip() else None
+        cleaned = _normalize_app_password(body.gmail_app_password)
+        if cleaned and len(cleaned) != 16:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"That's {len(cleaned)} characters after removing spaces -- a Gmail "
+                    "App Password is always 16 characters. Generate one at Google Account "
+                    "-> Security -> 2-Step Verification -> App passwords, and paste it "
+                    "in as-is (spaces are stripped automatically)."
+                ),
+            )
+        row.gmail_app_password_encrypted = encrypt(cleaned) if cleaned else None
     db.commit()
     db.refresh(row)
     return EmailCredentialsOut(

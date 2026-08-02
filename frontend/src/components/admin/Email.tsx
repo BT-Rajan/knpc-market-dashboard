@@ -240,7 +240,13 @@ function GmailSettings() {
         </div>
         <div className="field">
           <label>App password (Google Account → Security → 2-Step Verification → App passwords)</label>
-          <input type="password" style={inputStyle} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={status?.configured ? '•••••••••••• (enter to replace)' : '16-character app password'} />
+          <input
+            type="password"
+            style={inputStyle}
+            value={password}
+            onChange={(e) => setPassword(e.target.value.replace(/\s/g, ''))}
+            placeholder={status?.configured ? '•••••••••••• (enter to replace)' : '16-character app password'}
+          />
         </div>
         <button className="btn btn-brass" onClick={save} disabled={busy || (!address.trim() && !password.trim())}>
           {busy ? 'Saving…' : 'Save'}
