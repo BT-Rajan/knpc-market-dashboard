@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.db import Base, engine
 from app.config import ALLOWED_ORIGINS
+from app.migrations import run_additive_migrations
 from app.seed import seed
 from app.scraper import scheduler as scrape_scheduler
 from app.routers import auth, dashboard, admin, export, ai, reports, email
@@ -34,6 +35,7 @@ app.include_router(email.router)
 
 @app.on_event("startup")
 def on_startup():
+    run_additive_migrations(engine)
     Base.metadata.create_all(bind=engine)
     seed()
     scrape_scheduler.start()

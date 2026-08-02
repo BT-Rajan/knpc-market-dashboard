@@ -253,6 +253,34 @@ function GmailSettings() {
         </button>
         {message && <div style={{ fontSize: 13, color: 'var(--positive)' }}>{message}</div>}
         {error && <div style={{ fontSize: 13, color: 'var(--negative)' }}>{error}</div>}
+
+        {status && (status.last_success_at || status.last_failure_at) && (
+          <div className="panel" style={{ padding: 14, fontSize: 13 }}>
+            <div className="eyebrow" style={{ marginBottom: 8 }}>Send health</div>
+            <div>
+              Last successful send:{' '}
+              {status.last_success_at
+                ? <span className="positive">{new Date(status.last_success_at).toLocaleString()}</span>
+                : <span style={{ color: 'var(--text-dim)' }}>never</span>}
+            </div>
+            <div style={{ marginTop: 4 }}>
+              Consecutive failures:{' '}
+              <span className={status.consecutive_failures > 0 ? 'negative' : 'positive'}>
+                {status.consecutive_failures}
+              </span>
+            </div>
+            {status.last_failure_at && (
+              <div style={{ marginTop: 8 }}>
+                <div style={{ color: 'var(--text-dim)' }}>
+                  Last failure: {new Date(status.last_failure_at).toLocaleString()}
+                </div>
+                <div style={{ marginTop: 4, whiteSpace: 'pre-wrap', color: 'var(--negative)' }}>
+                  {status.last_failure_message}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

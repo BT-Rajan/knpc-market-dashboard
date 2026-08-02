@@ -91,7 +91,11 @@ CREATE TABLE IF NOT EXISTS email_credentials (
     id INT AUTO_INCREMENT PRIMARY KEY,
     gmail_address VARCHAR(255),
     gmail_app_password_encrypted VARCHAR(500),
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    last_success_at DATETIME,
+    last_failure_at DATETIME,
+    last_failure_message TEXT,
+    consecutive_failures INT DEFAULT 0
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS email_log (

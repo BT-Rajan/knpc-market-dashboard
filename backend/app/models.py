@@ -135,13 +135,20 @@ class EmailTemplate(Base):
 class EmailCredentials(Base):
     """Admin-entered Gmail SMTP sender account. app_password is encrypted
     at rest (see app/crypto.py) -- this is a real mailbox credential, not
-    just an API key. Single-row table (id=1)."""
+    just an API key. Single-row table (id=1). Tracks send health so a
+    chronic auth failure (e.g. Google rejecting the login) is visible at a
+    glance instead of requiring a trawl through the send log."""
     __tablename__ = "email_credentials"
 
     id = Column(Integer, primary_key=True)
     gmail_address = Column(String(255), nullable=True)
     gmail_app_password_encrypted = Column(String(500), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    last_success_at = Column(DateTime, nullable=True)
+    last_failure_at = Column(DateTime, nullable=True)
+    last_failure_message = Column(Text, nullable=True)
+    consecutive_failures = Column(Integer, default=0)
 
 
 class EmailLog(Base):

@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 
 from typing import List
 
@@ -114,13 +115,21 @@ def delete_template(template_id: int, db: Session = Depends(get_db)):
 
 # --- Gmail sender credentials ---
 
-@router.get("/credentials", response_model=EmailCredentialsOut)
-def get_credentials(db: Session = Depends(get_db)):
-    row = get_email_credentials_row(db)
+def _credentials_out(row) -> "EmailCredentialsOut":
     return EmailCredentialsOut(
         configured=bool(row.gmail_address and row.gmail_app_password_encrypted),
         gmail_address=row.gmail_address,
+        last_success_at=row.last_success_at,
+        last_failure_at=row.last_failure_at,
+        last_failure_message=row.last_failure_message,
+        consecutive_failures=row.consecutive_failures or 0,
     )
+
+
+@router.get("/credentials", response_model=EmailCredentialsOut)
+def get_credentials(db: Session = Depends(get_db)):
+    row = get_email_credentials_row(db)
+    return _credentials_out(row)
 
 
 @router.put("/credentials", response_model=EmailCredentialsOut)
@@ -141,12 +150,15 @@ def update_credentials(body: EmailCredentialsUpdate, db: Session = Depends(get_d
                 ),
             )
         row.gmail_app_password_encrypted = encrypt(cleaned) if cleaned else None
+        # A newly entered credential deserves a clean slate -- otherwise a
+        # stale failure streak from the old (bad) credential keeps showing
+        # even though this is untested and might well work.
+        row.consecutive_failures = 0
+        row.last_failure_at = None
+        row.last_failure_message = None
     db.commit()
     db.refresh(row)
-    return EmailCredentialsOut(
-        configured=bool(row.gmail_address and row.gmail_app_password_encrypted),
-        gmail_address=row.gmail_address,
-    )
+    return _credentials_out(row)
 
 
 # --- Send ---
@@ -166,6 +178,7 @@ def send_to_distribution_list(body: EmailSendRequest, db: Session = Depends(get_
         raise HTTPException(status_code=400, detail="No active recipients selected")
 
     gmail_address, gmail_app_password = resolve_email_credentials(db)
+    credentials_row = get_email_credentials_row(db)
 
     attachment_path = None
     if body.attach_report_filename:
@@ -185,10 +198,15 @@ def send_to_distribution_list(body: EmailSendRequest, db: Session = Depends(get_
             send_email(gmail_address, gmail_app_password, recipient.email, subject, body_html, attachment_path)
             db.add(EmailLog(template_name=template.name, recipient=recipient.email, status="success"))
             results.append(EmailSendResult(recipient=recipient.email, status="success"))
+            credentials_row.last_success_at = datetime.utcnow()
+            credentials_row.consecutive_failures = 0
             sent += 1
         except EmailSendError as exc:
             db.add(EmailLog(template_name=template.name, recipient=recipient.email, status="error", message=str(exc)))
             results.append(EmailSendResult(recipient=recipient.email, status="error", message=str(exc)))
+            credentials_row.last_failure_at = datetime.utcnow()
+            credentials_row.last_failure_message = str(exc)
+            credentials_row.consecutive_failures = (credentials_row.consecutive_failures or 0) + 1
             failed += 1
         db.commit()
 

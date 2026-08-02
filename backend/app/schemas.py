@@ -202,6 +202,10 @@ class EmailTemplateOut(EmailTemplateBase):
 class EmailCredentialsOut(BaseModel):
     configured: bool
     gmail_address: Optional[str] = None
+    last_success_at: Optional[datetime] = None
+    last_failure_at: Optional[datetime] = None
+    last_failure_message: Optional[str] = None
+    consecutive_failures: int = 0
 
 
 class EmailCredentialsUpdate(BaseModel):
