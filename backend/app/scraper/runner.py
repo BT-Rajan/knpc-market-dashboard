@@ -7,6 +7,8 @@ from bs4 import BeautifulSoup
 from app.models import Item, Source, PriceHistory, NewsItem, ScrapeLog
 from app.scraper.base import fetch, extract_value, extract_news, ScrapeError
 from app.config import SOURCE_URLS, SCRAPE_USER_AGENT, SCRAPE_REQUEST_TIMEOUT
+from app.ai_news_classifier import classify_urls
+from app.services import resolve_ai_key
 import requests
 
 logger = logging.getLogger("knpc.scraper")
@@ -104,17 +106,22 @@ def scrape_item(db: Session, item: Item) -> bool:
 OILPRICE_NEWS_URL = SOURCE_URLS.get("oilprice_news", "https://oilprice.com/Latest-Energy-News/World-News/")
 
 
-def collect_general_market_news(db: Session, limit: int = 10):
-    """Item-independent news sweep (item_id=NULL), mirroring the old app's
-    global news feed -- separate from any per-item price scraping so it
-    always runs regardless of which price sources succeed or fail."""
+def collect_general_market_news(db: Session, limit: int = 20):
+    """Item-independent news sweep -- fetches up to `limit` headline/url
+    pairs from oilprice.com's latest news page (fewer if the page doesn't
+    have that many), then asks DeepSeek to group each URL as 'general' or
+    against one of the tracked items (only the URLs are sent, not the
+    scraped titles/body). Falls back to filing everything as general if no
+    DeepSeek key is configured or the classification call fails --
+    collection itself never depends on the AI call succeeding."""
     try:
         headers = {"User-Agent": SCRAPE_USER_AGENT}
         resp = requests.get(OILPRICE_NEWS_URL, headers=headers, timeout=SCRAPE_REQUEST_TIMEOUT)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        count = 0
+        topics = []  # [{"title": ..., "url": ...}], de-duped, capped at `limit`
+        seen_urls = set()
         for a in soup.find_all("a", href=True):
             title = a.get_text(" ", strip=True)
             href = a["href"]
@@ -122,12 +129,47 @@ def collect_general_market_news(db: Session, limit: int = 10):
                 continue
             if href.startswith("/"):
                 href = "https://oilprice.com" + href
-            _save_news(db, None, title, href, "OilPrice")
-            count += 1
-            if count >= limit:
+            if href in seen_urls:
+                continue
+            seen_urls.add(href)
+            topics.append({"title": title, "url": href})
+            if len(topics) >= limit:
                 break
+
+        if not topics:
+            _log(db, None, "OilPrice (general)", "success", "logged=0 (no topics found on page)")
+            db.commit()
+            return 0
+
+        items = db.query(Item).filter(Item.active == True).all()  # noqa: E712
+        item_by_name = {i.name.strip().lower(): i for i in items}
+        api_key = resolve_ai_key(db, "deepseek")
+
+        grouping = classify_urls([t["url"] for t in topics], [i.name for i in items], api_key)
+        topic_by_url = {t["url"]: t for t in topics}
+
+        count = 0
+        for url in grouping.get("general", []):
+            topic = topic_by_url.get(url)
+            if not topic:
+                continue
+            _save_news(db, None, topic["title"], topic["url"], "OilPrice")
+            count += 1
+
+        for item_name, urls in grouping.get("items", {}).items():
+            item = item_by_name.get(str(item_name).strip().lower())
+            for url in urls:
+                topic = topic_by_url.get(url)
+                if not topic:
+                    continue
+                # An item name the model invented/misspelled shouldn't drop
+                # the headline -- file it as general instead of losing it.
+                target_item_id = item.id if item else None
+                _save_news(db, target_item_id, topic["title"], topic["url"], "OilPrice")
+                count += 1
+
         db.commit()
-        _log(db, None, "OilPrice (general)", "success", f"logged={count}")
+        _log(db, None, "OilPrice (general)", "success", f"logged={count} of {len(topics)} topics fetched")
         return count
     except Exception as exc:
         db.rollback()
