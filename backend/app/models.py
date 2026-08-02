@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, Text, DateTime, Date,
+    Column, Integer, String, Float, Boolean, Text, DateTime, Date, JSON,
     ForeignKey, UniqueConstraint
 )
 from sqlalchemy.orm import relationship
@@ -161,3 +161,23 @@ class EmailLog(Base):
     recipient = Column(String(255), nullable=False)
     status = Column(String(20), nullable=False)  # success | error
     message = Column(Text, nullable=True)
+
+
+class ScheduledEmail(Base):
+    """A send queued for a future date/time. template_name is a display
+    snapshot (survives the template being renamed/deleted later, matching
+    EmailLog's approach) -- the actual send still looks up the live
+    template by id, so edits made before the scheduled time are honored."""
+    __tablename__ = "scheduled_emails"
+
+    id = Column(Integer, primary_key=True)
+    template_id = Column(Integer, nullable=False)
+    template_name = Column(String(120), nullable=False)
+    recipient_ids = Column(JSON, nullable=False)
+    variables = Column(JSON, default=dict)
+    attach_report_filename = Column(String(255), nullable=True)
+    scheduled_at = Column(DateTime, nullable=False)
+    status = Column(String(20), default="pending")  # pending | sent | partially_failed | failed | cancelled
+    created_at = Column(DateTime, default=datetime.utcnow)
+    sent_at = Column(DateTime, nullable=True)
+    result_summary = Column(Text, nullable=True)

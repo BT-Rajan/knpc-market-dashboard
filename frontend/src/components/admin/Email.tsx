@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { api, ApiError } from '../../api/client'
-import { EmailRecipientOut, EmailTemplateOut, EmailCredentialsOut, EmailLogOut, EmailSendResponse } from '../../types'
+import { EmailRecipientOut, EmailTemplateOut, EmailCredentialsOut, EmailLogOut, EmailSendResponse, ScheduledEmailOut } from '../../types'
 
 const SUB_TABS = ['Recipients', 'Templates', 'Send', 'Gmail Settings', 'Send Log'] as const
 type SubTab = (typeof SUB_TABS)[number]
@@ -310,12 +310,22 @@ function Send() {
   const [result, setResult] = useState<EmailSendResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const [mode, setMode] = useState<'now' | 'schedule'>('now')
+  const [scheduledAt, setScheduledAt] = useState('')
+  const [scheduleConfirmation, setScheduleConfirmation] = useState<string | null>(null)
+  const [scheduled, setScheduled] = useState<ScheduledEmailOut[]>([])
+
+  function reloadScheduled() {
+    api.get<ScheduledEmailOut[]>('/api/admin/email/schedule').then(setScheduled)
+  }
+
   useEffect(() => {
     api.get<EmailRecipientOut[]>('/api/admin/email/recipients').then(setRecipients)
     api.get<EmailTemplateOut[]>('/api/admin/email/templates').then((ts) => {
       setTemplates(ts)
       if (ts.length > 0) setTemplateId(ts[0].id)
     })
+    reloadScheduled()
   }, [])
 
   const selectedTemplate = templates.find((t) => t.id === templateId)
@@ -342,17 +352,47 @@ function Send() {
     setSending(true)
     setError(null)
     setResult(null)
+    setScheduleConfirmation(null)
     try {
-      const res = await api.post<EmailSendResponse>('/api/admin/email/send', {
-        template_id: templateId,
-        recipient_ids: selectedRecipients,
-        variables: vars,
-      })
-      setResult(res)
+      if (mode === 'now') {
+        const res = await api.post<EmailSendResponse>('/api/admin/email/send', {
+          template_id: templateId,
+          recipient_ids: selectedRecipients,
+          variables: vars,
+        })
+        setResult(res)
+      } else {
+        if (!scheduledAt) {
+          setError('Pick a date and time first.')
+          return
+        }
+        // datetime-local gives a naive local wall-clock string; new Date(...)
+        // interprets it in the browser's own timezone, and toISOString()
+        // converts that to true UTC -- the backend stores/compares
+        // everything as naive-but-UTC, so this conversion has to happen here.
+        const utcIso = new Date(scheduledAt).toISOString()
+        const res = await api.post<ScheduledEmailOut>('/api/admin/email/schedule', {
+          template_id: templateId,
+          recipient_ids: selectedRecipients,
+          variables: vars,
+          scheduled_at: utcIso,
+        })
+        setScheduleConfirmation(`Scheduled for ${new Date(res.scheduled_at).toLocaleString()}.`)
+        reloadScheduled()
+      }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Send failed')
+      setError(e instanceof ApiError ? e.message : (mode === 'now' ? 'Send failed' : 'Scheduling failed'))
     } finally {
       setSending(false)
+    }
+  }
+
+  async function cancelScheduled(id: number) {
+    try {
+      await api.delete(`/api/admin/email/schedule/${id}`)
+      reloadScheduled()
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to cancel')
     }
   }
 
@@ -411,11 +451,43 @@ function Send() {
         )}
       </div>
 
-      <button className="btn btn-brass" onClick={send} disabled={sending || !templateId || selectedRecipients.length === 0} style={{ padding: '10px' }}>
-        {sending ? 'Sending…' : `Send to ${selectedRecipients.length} recipient(s)`}
+      <div className="panel" style={{ padding: 18 }}>
+        <div className="eyebrow" style={{ marginBottom: 12 }}>When</div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: mode === 'schedule' ? 12 : 0 }}>
+          <button className={mode === 'now' ? 'btn btn-brass' : 'btn'} onClick={() => setMode('now')}>Send now</button>
+          <button className={mode === 'schedule' ? 'btn btn-brass' : 'btn'} onClick={() => setMode('schedule')}>Schedule for later</button>
+        </div>
+        {mode === 'schedule' && (
+          <input
+            type="datetime-local"
+            style={inputStyle}
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(e.target.value)}
+            min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+          />
+        )}
+      </div>
+
+      <button
+        className="btn btn-brass"
+        onClick={send}
+        disabled={sending || !templateId || selectedRecipients.length === 0 || (mode === 'schedule' && !scheduledAt)}
+        style={{ padding: '10px' }}
+      >
+        {sending
+          ? (mode === 'now' ? 'Sending…' : 'Scheduling…')
+          : mode === 'now'
+            ? `Send to ${selectedRecipients.length} recipient(s)`
+            : `Schedule for ${selectedRecipients.length} recipient(s)`}
       </button>
 
       {error && <div style={{ color: 'var(--negative)', fontSize: 13 }}>{error}</div>}
+
+      {scheduleConfirmation && (
+        <div className="panel" style={{ padding: 16, fontSize: 13, color: 'var(--positive)' }}>
+          {scheduleConfirmation}
+        </div>
+      )}
 
       {result && (
         <div className="panel" style={{ padding: 16, fontSize: 13 }}>
@@ -423,6 +495,30 @@ function Send() {
           {result.results.map((r, i) => (
             <div key={i} style={{ color: r.status === 'success' ? 'var(--positive)' : 'var(--negative)' }}>
               {r.recipient}: {r.status}{r.message ? ` — ${r.message}` : ''}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {scheduled.length > 0 && (
+        <div className="panel">
+          <div className="eyebrow" style={{ padding: '14px 14px 0' }}>Scheduled sends</div>
+          {scheduled.map((s, i) => (
+            <div key={s.id}>
+              {i > 0 && <hr className="hairline" />}
+              <div style={{ padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                <div>
+                  <div>{s.template_name} · {s.recipient_ids.length} recipient(s)</div>
+                  <div style={{ color: 'var(--text-dim)', marginTop: 2 }}>
+                    {s.status === 'pending' ? 'Scheduled for' : s.status === 'sent' ? 'Sent' : s.status === 'cancelled' ? 'Cancelled — was scheduled for' : 'Attempted'}{' '}
+                    {new Date(s.scheduled_at).toLocaleString()}
+                    {s.result_summary && ` · ${s.result_summary}`}
+                  </div>
+                </div>
+                {s.status === 'pending' && (
+                  <button className="btn btn-danger" onClick={() => cancelScheduled(s.id)}>Cancel</button>
+                )}
+              </div>
             </div>
           ))}
         </div>

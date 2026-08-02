@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from typing import List
 
@@ -8,16 +8,16 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.auth import get_current_admin
-from app.models import EmailRecipient, EmailTemplate, EmailLog
+from app.models import EmailRecipient, EmailTemplate, EmailLog, ScheduledEmail
 from app.schemas import (
     EmailRecipientOut, EmailRecipientCreate, EmailRecipientUpdate,
     EmailTemplateOut, EmailTemplateCreate, EmailTemplateUpdate,
     EmailCredentialsOut, EmailCredentialsUpdate,
     EmailSendRequest, EmailSendResponse, EmailSendResult,
-    EmailLogOut,
+    EmailLogOut, ScheduledEmailCreate, ScheduledEmailOut,
 )
 from app.services import get_email_credentials_row, resolve_email_credentials
-from app.email_service import send_email, render_template, EmailSendError
+from app.email_batch import send_batch
 from app.crypto import encrypt
 from app.config import REPORTS_DIR
 
@@ -188,31 +188,74 @@ def send_to_distribution_list(body: EmailSendRequest, db: Session = Depends(get_
         else:
             raise HTTPException(status_code=404, detail=f"Report not found: {body.attach_report_filename}")
 
-    results = []
-    sent, failed = 0, 0
-    for recipient in recipients:
-        variables = {**body.variables, "recipient_name": recipient.name or recipient.email}
-        subject = render_template(template.subject, variables)
-        body_html = render_template(template.body_html, variables)
-        unfilled = sorted(set(re.findall(r"\{\{\s*(\w+)\s*\}\}", subject + " " + body_html)))
-        unfilled_note = f"unfilled placeholders: {', '.join(unfilled)}" if unfilled else None
-        try:
-            send_email(gmail_address, gmail_app_password, recipient.email, subject, body_html, attachment_path)
-            db.add(EmailLog(template_name=template.name, recipient=recipient.email, status="success", message=unfilled_note))
-            results.append(EmailSendResult(recipient=recipient.email, status="success", message=unfilled_note))
-            credentials_row.last_success_at = datetime.utcnow()
-            credentials_row.consecutive_failures = 0
-            sent += 1
-        except EmailSendError as exc:
-            db.add(EmailLog(template_name=template.name, recipient=recipient.email, status="error", message=str(exc)))
-            results.append(EmailSendResult(recipient=recipient.email, status="error", message=str(exc)))
-            credentials_row.last_failure_at = datetime.utcnow()
-            credentials_row.last_failure_message = str(exc)
-            credentials_row.consecutive_failures = (credentials_row.consecutive_failures or 0) + 1
-            failed += 1
-        db.commit()
+    sent, failed, results = send_batch(
+        db, template, recipients, body.variables, attachment_path,
+        gmail_address, gmail_app_password, credentials_row,
+    )
+    return EmailSendResponse(sent=sent, failed=failed, results=[EmailSendResult(**r) for r in results])
 
-    return EmailSendResponse(sent=sent, failed=failed, results=results)
+
+# --- Scheduled sends ---
+
+def _normalize_to_naive_utc(dt: datetime) -> datetime:
+    """Every timestamp column in this app is naive-but-UTC; a tz-aware value
+    from the client (e.g. an ISO string with a 'Z' or offset) needs the
+    offset applied and then the tzinfo stripped, or comparisons against
+    datetime.utcnow() elsewhere would be silently wrong."""
+    if dt.tzinfo is not None:
+        return dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return dt
+
+
+@router.post("/schedule", response_model=ScheduledEmailOut)
+def create_scheduled_email(body: ScheduledEmailCreate, db: Session = Depends(get_db)):
+    template = db.get(EmailTemplate, body.template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    recipients = db.query(EmailRecipient).filter(EmailRecipient.id.in_(body.recipient_ids)).all()
+    if not recipients:
+        raise HTTPException(status_code=400, detail="No recipients selected")
+
+    scheduled_at = _normalize_to_naive_utc(body.scheduled_at)
+    if scheduled_at <= datetime.utcnow():
+        raise HTTPException(status_code=422, detail="Scheduled time must be in the future")
+
+    if body.attach_report_filename:
+        candidate = REPORTS_DIR / body.attach_report_filename
+        if not candidate.exists():
+            raise HTTPException(status_code=404, detail=f"Report not found: {body.attach_report_filename}")
+
+    sched = ScheduledEmail(
+        template_id=template.id,
+        template_name=template.name,
+        recipient_ids=body.recipient_ids,
+        variables=body.variables,
+        attach_report_filename=body.attach_report_filename,
+        scheduled_at=scheduled_at,
+        status="pending",
+    )
+    db.add(sched)
+    db.commit()
+    db.refresh(sched)
+    return sched
+
+
+@router.get("/schedule", response_model=List[ScheduledEmailOut])
+def list_scheduled_emails(db: Session = Depends(get_db)):
+    return db.query(ScheduledEmail).order_by(ScheduledEmail.scheduled_at.desc()).all()
+
+
+@router.delete("/schedule/{schedule_id}")
+def cancel_scheduled_email(schedule_id: int, db: Session = Depends(get_db)):
+    sched = db.get(ScheduledEmail, schedule_id)
+    if not sched:
+        raise HTTPException(status_code=404, detail="Scheduled email not found")
+    if sched.status != "pending":
+        raise HTTPException(status_code=409, detail=f"Can't cancel -- already {sched.status}")
+    sched.status = "cancelled"
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/logs", response_model=List[EmailLogOut])

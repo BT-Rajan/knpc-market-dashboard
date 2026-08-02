@@ -129,3 +129,17 @@ export interface EmailSendResponse {
   failed: number
   results: EmailSendResult[]
 }
+
+export interface ScheduledEmailOut {
+  id: number
+  template_id: number
+  template_name: string
+  recipient_ids: number[]
+  variables: Record<string, string>
+  attach_report_filename: string | null
+  scheduled_at: string
+  status: string
+  created_at: string
+  sent_at: string | null
+  result_summary: string | null
+}

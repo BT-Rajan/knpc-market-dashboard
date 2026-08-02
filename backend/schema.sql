@@ -106,3 +106,17 @@ CREATE TABLE IF NOT EXISTS email_log (
     status VARCHAR(20) NOT NULL,
     message TEXT
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS scheduled_emails (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    template_id INT NOT NULL,
+    template_name VARCHAR(120) NOT NULL,
+    recipient_ids JSON NOT NULL,
+    variables JSON,
+    attach_report_filename VARCHAR(255),
+    scheduled_at DATETIME NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    sent_at DATETIME,
+    result_summary TEXT
+) ENGINE=InnoDB;

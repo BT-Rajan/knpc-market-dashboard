@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Optional, List
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, field_serializer
 
 
 class LoginRequest(BaseModel):
@@ -241,3 +241,44 @@ class EmailLogOut(BaseModel):
     recipient: str
     status: str
     message: Optional[str] = None
+
+
+# --- Scheduled sends ---
+# scheduled_at/created_at/sent_at are stored naive-but-UTC (matching every
+# other timestamp column in this app). The _utc_z serializer appends "Z" on
+# the way out so the browser's `new Date(...)` parses them as UTC and
+# converts to local time correctly for display -- without it, a naive
+# ISO string with no zone gets reinterpreted as local time on the way back,
+# silently shifting the displayed time by the browser's UTC offset.
+
+def _utc_z(dt: Optional[datetime]) -> Optional[str]:
+    if dt is None:
+        return None
+    return dt.isoformat() + "Z" if dt.tzinfo is None else dt.isoformat()
+
+
+class ScheduledEmailCreate(BaseModel):
+    template_id: int
+    recipient_ids: List[int]
+    variables: dict[str, str] = {}
+    attach_report_filename: Optional[str] = None
+    scheduled_at: datetime
+
+
+class ScheduledEmailOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    template_id: int
+    template_name: str
+    recipient_ids: List[int]
+    variables: dict
+    attach_report_filename: Optional[str] = None
+    scheduled_at: datetime
+    status: str
+    created_at: datetime
+    sent_at: Optional[datetime] = None
+    result_summary: Optional[str] = None
+
+    @field_serializer("scheduled_at", "created_at", "sent_at")
+    def _serialize_utc(self, dt: Optional[datetime], _info):
+        return _utc_z(dt)
