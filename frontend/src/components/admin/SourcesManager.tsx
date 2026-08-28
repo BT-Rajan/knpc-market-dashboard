@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, ApiError } from '../../api/client'
 import { ItemOut, SourceOut } from '../../types'
 
-const SOURCE_TYPES = ['css', 'json_path', 'regex']
+const SOURCE_TYPES = ['css', 'json_path', 'regex', 'eia_api']
 
 function emptySourceForm(itemId: number) {
   return {
@@ -238,7 +238,7 @@ export default function SourcesManager() {
                   <input value={sourceForm.url} onChange={(e) => setSourceForm({ ...sourceForm, url: e.target.value })} />
                 </div>
                 <div className="field" style={{ gridColumn: '1 / -1' }}>
-                  <label>Value selector (CSS selector / dotted JSON path / regex)</label>
+                  <label>Value selector (CSS selector / dotted JSON path / regex / EIA series ID — informational for eia_api, the series ID is read from the URL)</label>
                   <input value={sourceForm.value_selector} onChange={(e) => setSourceForm({ ...sourceForm, value_selector: e.target.value })} />
                 </div>
                 <div className="field" style={{ gridColumn: '1 / -1' }}>

@@ -6,9 +6,10 @@ from bs4 import BeautifulSoup
 
 from app.models import Item, Source, PriceHistory, NewsItem, ScrapeLog
 from app.scraper.base import fetch, extract_value, extract_news, ScrapeError
-from app.config import SOURCE_URLS, SCRAPE_USER_AGENT, SCRAPE_REQUEST_TIMEOUT
+from app.config import SOURCE_URLS, SCRAPE_USER_AGENT, SCRAPE_REQUEST_TIMEOUT, EIA_PRODUCT_SERIES
 from app.ai_news_classifier import classify_urls
 from app.services import resolve_ai_key
+from app import eia_client
 import requests
 
 logger = logging.getLogger("knpc.scraper")
@@ -63,8 +64,12 @@ def scrape_item(db: Session, item: Item) -> bool:
     price_ok = False
     for source in sources:
         try:
-            resp = fetch(source.url)
-            price = extract_value(source, resp)
+            if source.source_type == "eia_api":
+                fallback_query = EIA_PRODUCT_SERIES.get(item.code, {}).get("query")
+                price = eia_client.fetch_price_from_source_url(source.url, fallback_query)
+            else:
+                resp = fetch(source.url)
+                price = extract_value(source, resp)
 
             today = date.today()
             existing = (

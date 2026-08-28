@@ -125,7 +125,7 @@ def get_product_stats(db: Session, year: int, quarter: str) -> list[dict]:
     """Calculate quarterly stats for refined products."""
     start, end = get_quarter_date_range(year, quarter)
     
-    products = ["NAPHTHA", "GASOLINE92", "GASOLINE95", "JETKERO", "GASOIL10", "FUELOIL180", "FUELOIL380", "LPG"]
+    products = ["GASOLINE_CONV_GC", "ULSD_GC", "JETKERO_GC", "PROPANE_MB"]
     stats = []
     
     for code in products:
@@ -286,10 +286,11 @@ def generate_quarterly_report(
     doc.add_paragraph()
     
     # Section II: Refined products
-    _heading(doc, "II. Refined Product Proxy Review", level=1)
+    _heading(doc, "II. Refined Product Spot Price Review", level=1)
     doc.add_paragraph(
-        "Singapore / regional refined product proxy movement (Naphtha, Gasoline, Jet/Kerosene, "
-        "Gasoil, Fuel Oil, LPG)."
+        "U.S. daily spot price movement (EIA Open Data) for Conventional Gasoline, "
+        "Ultra-Low-Sulfur No. 2 Diesel Fuel, and Kerosene-Type Jet Fuel (U.S. Gulf Coast), "
+        "and Propane (Mont Belvieu, Texas)."
     )
     if p_stats:
         _add_table(

@@ -83,6 +83,15 @@ CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY", "")
 CLAUDE_API_URL = os.getenv("CLAUDE_API_URL", "https://api.anthropic.com/v1/messages")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-5")
 
+# --- EIA (U.S. Energy Information Administration) Open Data API ---
+# Free key: https://www.eia.gov/opendata/register.php
+# Used for the "Products" catalog (see EIA_PRODUCT_SERIES below). Never
+# written into a Source.url -- injected onto the request in eia_client.py
+# so it doesn't show up in the admin sources table or scrape logs.
+EIA_API_KEY = os.getenv("EIA_API_KEY", "")
+EIA_API_BASE_URL = os.getenv("EIA_API_BASE_URL", "https://api.eia.gov/v2")
+EIA_SCRAPE_REQUEST_TIMEOUT = 15
+
 # --- Email (Gmail SMTP) ---
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 587
@@ -98,17 +107,25 @@ SEED_CATALOG = {
         {"code": "DUBAI", "name": "Dubai", "unit": "USD/bbl"},
         {"code": "KEC", "name": "Kuwait Export Crude", "unit": "USD/bbl"},
     ],
+    # Replaced (see docs/archive or git history for the old Singapore/regional
+    # proxy lineup) with the EIA U.S. daily spot-price product set from the
+    # uploaded Energy_Product_Spot_Prices.xlsx, sourced live from the EIA
+    # Open Data API (petroleum/pri/spt) -- see EIA_PRODUCT_SERIES below.
     "Products": [
-        {"code": "NAPHTHA", "name": "Naphtha", "unit": "USD/ton"},
-        {"code": "GASOLINE92", "name": "Gasoline 92", "unit": "USD/bbl"},
-        {"code": "GASOLINE95", "name": "Gasoline 95", "unit": "USD/bbl"},
-        {"code": "JETKERO", "name": "Jet Kerosene", "unit": "USD/bbl"},
-        {"code": "GASOIL10", "name": "Gasoil 10ppm", "unit": "USD/bbl"},
-        {"code": "FUELOIL180", "name": "Fuel Oil 180 CST", "unit": "USD/ton"},
-        {"code": "FUELOIL380", "name": "Fuel Oil 380 CST", "unit": "USD/ton"},
-        {"code": "LPG", "name": "LPG", "unit": "USD/ton"},
+        {"code": "GASOLINE_CONV_GC", "name": "Conventional Gasoline (US Gulf Coast, Regular)", "unit": "USD/gal"},
+        {"code": "ULSD_GC", "name": "Ultra-Low-Sulfur No. 2 Diesel Fuel (US Gulf Coast)", "unit": "USD/gal"},
+        {"code": "JETKERO_GC", "name": "Kerosene-Type Jet Fuel (US Gulf Coast)", "unit": "USD/gal"},
+        {"code": "PROPANE_MB", "name": "Propane (Mont Belvieu, Texas)", "unit": "USD/gal"},
     ],
 }
+
+# Retired product codes from the old catalog -- kept only so a one-time
+# migration (backend/tools/replace_products_catalog.py) knows what to
+# deactivate. Not used by seed.py.
+RETIRED_PRODUCT_CODES = [
+    "NAPHTHA", "GASOLINE92", "GASOLINE95", "JETKERO",
+    "GASOIL10", "FUELOIL180", "FUELOIL380", "LPG",
+]
 
 # --- Seed source data, carried over from github.com/BT-Rajan/knpc-dashboard
 # (main branch) config.py SOURCES / YAHOO_BENCHMARKS / PRODUCT_PROXY_MAP /
@@ -141,19 +158,30 @@ BRENT_KEYWORDS = ["brent"]
 WTI_KEYWORDS = ["wti", "west texas intermediate"]
 OMAN_KEYWORDS = ["oman crude", "oman"]
 
-# Same public-page fallback chain the old app used for every refined
-# product (oilprice.com charts -> investing.com -> tradingeconomics.com),
-# and the same per-product keyword lists it searched for.
-PRODUCT_SOURCE_ORDER = ["oilprice_charts", "investing_commodities", "tradingeconomics_energy"]
-PRODUCT_KEYWORDS = {
-    "NAPHTHA": ["naphtha", "japan naphtha", "singapore naphtha", "c&f japan"],
-    "GASOLINE92": ["rbob gasoline", "gasoline 92", "singapore gasoline 92", "92 ron", "gasoline"],
-    "GASOLINE95": ["gasoline 95", "95 ron", "premium gasoline", "gasoline", "motor gasoline"],
-    "JETKERO": ["jet fuel", "kerosene", "aviation fuel", "jet", "jet/kerosene"],
-    "GASOIL10": ["heating oil", "gasoil", "diesel", "singapore gasoil", "gasoil 10ppm"],
-    "FUELOIL180": ["fuel oil", "180 cst", "high sulphur fuel oil", "hsfo", "fuel oil 180"],
-    "FUELOIL380": ["fuel oil 380", "380 cst", "bunker fuel", "fuel oil", "hsfo 380"],
-    "LPG": ["lpg", "propane", "butane", "mont belvieu", "aramco cp", "liquefied petroleum"],
+# --- Products: EIA Open Data API (petroleum/pri/spt), daily spot prices ---
+# series = EIA's published series ID for this exact product/location pair
+# (same style of code as RWTC for WTI). query = (product keyword, location
+# keyword) used by eia_client.resolve_series_id() as a self-healing fallback
+# if the hardcoded series ID above ever stops returning data -- see
+# app/eia_client.py for why. Product/location names below are the "Category"
+# / "Product / Location" columns from the source spreadsheet.
+EIA_PRODUCT_SERIES = {
+    "GASOLINE_CONV_GC": {
+        "series": "EER_EPMRU_PF4_RGC_DPG",
+        "query": ("conventional gasoline", "gulf coast"),
+    },
+    "ULSD_GC": {
+        "series": "EER_EPD2DXL0_PF4_RGC_DPG",
+        "query": ("ultra-low sulfur", "gulf coast"),
+    },
+    "JETKERO_GC": {
+        "series": "EER_EPJK_PF4_RGC_DPG",
+        "query": ("kerosene-type jet fuel", "gulf coast"),
+    },
+    "PROPANE_MB": {
+        "series": "EER_EPLLPA_PF4_Y44MB_DPG",
+        "query": ("propane", "mont belvieu"),
+    },
 }
 
 # --- Report Generation ---
@@ -168,54 +196,31 @@ REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 
 MOG_DIVISION_NAME = "Marketing Operations Group (MOG)"
 
-# Product metadata (proxy mapping from main branch)
+# Product metadata -- U.S. Gulf Coast / Mont Belvieu spot markets, sourced
+# live from the EIA Open Data API (see EIA_PRODUCT_SERIES above).
 PRODUCT_PROXY_MAP = {
-    "NAPHTHA": {
-        "market": "Singapore / Regional Proxy",
-        "proxy_type": "Naphtha / regional naphtha proxy",
-        "benchmark_basis": "Japan C&F Naphtha direction",
-        "notes": "Japan C&F naphtha and regional naphtha prices are commonly used as proxies for Asian naphtha direction."
+    "GASOLINE_CONV_GC": {
+        "market": "U.S. Gulf Coast",
+        "proxy_type": "Direct spot price (not a proxy)",
+        "benchmark_basis": "EIA daily spot price, Conventional Gasoline, Regular",
+        "notes": "EIA petroleum/pri/spt series EER_EPMRU_PF4_RGC_DPG.",
     },
-    "GASOLINE92": {
-        "market": "Singapore / Regional Proxy",
-        "proxy_type": "Regional gasoline proxy",
-        "benchmark_basis": "CME RBOB Gasoline / regional gasoline proxy",
-        "notes": "Direct Singapore MoPS assessments are often paywalled. Public regional gasoline proxies are utilized."
+    "ULSD_GC": {
+        "market": "U.S. Gulf Coast",
+        "proxy_type": "Direct spot price (not a proxy)",
+        "benchmark_basis": "EIA daily spot price, Ultra-Low-Sulfur No. 2 Diesel Fuel",
+        "notes": "EIA petroleum/pri/spt series EER_EPD2DXL0_PF4_RGC_DPG.",
     },
-    "GASOLINE95": {
-        "market": "Singapore / Regional Proxy",
-        "proxy_type": "Premium gasoline proxy",
-        "benchmark_basis": "Premium regional gasoline markers",
-        "notes": "Tracks high-octane gasoline direction metrics and premium regional retail benchmark directionals."
+    "JETKERO_GC": {
+        "market": "U.S. Gulf Coast",
+        "proxy_type": "Direct spot price (not a proxy)",
+        "benchmark_basis": "EIA daily spot price, Kerosene-Type Jet Fuel",
+        "notes": "EIA petroleum/pri/spt series EER_EPJK_PF4_RGC_DPG.",
     },
-    "JETKERO": {
-        "market": "Singapore / Regional Proxy",
-        "proxy_type": "Jet fuel / kerosene proxy",
-        "benchmark_basis": "US Gulf Coast Kerosene / regional proxy",
-        "notes": "Tracking aviation component premium metrics via highly liquid regional public proxy channels."
+    "PROPANE_MB": {
+        "market": "Mont Belvieu, Texas",
+        "proxy_type": "Direct spot price (not a proxy)",
+        "benchmark_basis": "EIA daily spot price, Propane",
+        "notes": "EIA petroleum/pri/spt series EER_EPLLPA_PF4_Y44MB_DPG.",
     },
-    "GASOIL10": {
-        "market": "Singapore / Regional Proxy",
-        "proxy_type": "Middle distillate proxy",
-        "benchmark_basis": "ICE Gasoil / regional low-sulfur diesel proxy",
-        "notes": "Tracking ultra-low sulfur gasoil regional trends against global low-sulfur indicators."
-    },
-    "FUELOIL180": {
-        "market": "Singapore / Regional Proxy",
-        "proxy_type": "Residual fuel proxy",
-        "benchmark_basis": "Singapore fuel oil / high sulphur fuel oil proxy",
-        "notes": "Direct Singapore 180 CST assessments are often paywalled. Public fuel oil proxies are used."
-    },
-    "FUELOIL380": {
-        "market": "Singapore / Regional Proxy",
-        "proxy_type": "Residual fuel proxy",
-        "benchmark_basis": "ICE Singapore Fuel Oil 380 CST proxy",
-        "notes": "ICE Singapore fuel oil 380 CST or public HSFO proxies are used where available."
-    },
-    "LPG": {
-        "market": "Singapore / Regional Proxy",
-        "proxy_type": "LPG proxy",
-        "benchmark_basis": "Saudi Aramco CP / Mont Belvieu / regional LPG proxy",
-        "notes": "LPG pricing is often represented through Saudi Aramco CP, Mont Belvieu, or public regional component metrics."
-    }
 }

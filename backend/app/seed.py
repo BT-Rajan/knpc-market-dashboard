@@ -16,8 +16,9 @@ from app.config import (
     SEED_CATALOG, DEFAULT_SCRAPE_FREQUENCY_MINUTES,
     SOURCE_URLS, YAHOO_TICKERS,
     DUBAI_KEYWORDS, KEC_KEYWORDS, BRENT_KEYWORDS, WTI_KEYWORDS, OMAN_KEYWORDS,
-    PRODUCT_SOURCE_ORDER, PRODUCT_KEYWORDS,
+    EIA_PRODUCT_SERIES,
 )
+from app.eia_client import series_data_url as eia_series_data_url
 
 YAHOO_JSON_PATH = "chart.result.0.meta.regularMarketPrice"
 OILPRICE_NEWS_SELECTOR = 'a[href*="oilprice.com"]'
@@ -80,14 +81,21 @@ def _seed_sources_for_item(db, item):
             )
         return
 
-    if code in PRODUCT_KEYWORDS:
-        keywords = PRODUCT_KEYWORDS[code]
-        for i, src_key in enumerate(PRODUCT_SOURCE_ORDER, start=1):
-            _add_source(
-                db, item, src_key.replace("_", " ").title(), SOURCE_URLS[src_key],
-                "regex", _keyword_regex(keywords), priority=i,
-                news_selector=OILPRICE_NEWS_SELECTOR if src_key == "oilprice_charts" else None,
-            )
+    if code in EIA_PRODUCT_SERIES:
+        series_id = EIA_PRODUCT_SERIES[code]["series"]
+        _add_source(
+            db, item, "EIA Open Data (petroleum/pri/spt)",
+            eia_series_data_url(series_id),
+            "eia_api", series_id, priority=1,
+        )
+        # Same public-page fallback the crude benchmarks use, keyed off the
+        # product's own name -- keeps a second source in the chain if the
+        # EIA API is briefly unreachable, consistent with every other item.
+        _add_source(
+            db, item, "OilPrice.com (fallback)", SOURCE_URLS["oilprice_charts"],
+            "regex", _keyword_regex([item.name.split(" (")[0]]), priority=2,
+            news_selector=OILPRICE_NEWS_SELECTOR,
+        )
         return
 
 

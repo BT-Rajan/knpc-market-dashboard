@@ -8,7 +8,7 @@ database if it doesn't exist yet, and writes backend/.env.
 
 Required env vars: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD (may
 be empty string), ADMIN_PASSWORD, USER_PASSWORD.
-Optional: DEEPSEEK_API_KEY, CLAUDE_API_KEY, ALLOWED_ORIGINS,
+Optional: DEEPSEEK_API_KEY, CLAUDE_API_KEY, EIA_API_KEY, ALLOWED_ORIGINS,
 SCRAPE_FREQUENCY_MINUTES, PORT (see app/config.py for the default).
 
 Idempotent: if backend/.env already exists, does nothing and exits 0 --
@@ -96,6 +96,7 @@ def main() -> None:
     port = os.environ.get("PORT", "8585")
     deepseek_key = os.environ.get("DEEPSEEK_API_KEY", "")
     claude_key = os.environ.get("CLAUDE_API_KEY", "")
+    eia_key = os.environ.get("EIA_API_KEY", "")
 
     env_content = f"""DB_HOST={db_host}
 DB_PORT={db_port}
@@ -117,6 +118,7 @@ ALLOWED_ORIGINS={allowed_origins}
 
 DEEPSEEK_API_KEY={deepseek_key}
 CLAUDE_API_KEY={claude_key}
+EIA_API_KEY={eia_key}
 """
     ENV_PATH.write_text(env_content, encoding="utf-8")
     print(f"[OK] Wrote {ENV_PATH}")
