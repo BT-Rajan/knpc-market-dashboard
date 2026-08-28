@@ -11,10 +11,11 @@ interface Props {
   onAskAI: () => void
   onLogout: () => void
   username: string | null
+  onGoHome: () => void
 }
 
 export default function NavBar({
-  categories, selectedCode, onSelect, role, view, onChangeView, onAskAI, onLogout, username,
+  categories, selectedCode, onSelect, role, view, onChangeView, onAskAI, onLogout, username, onGoHome,
 }: Props) {
   const [openCategory, setOpenCategory] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -42,17 +43,23 @@ export default function NavBar({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-        <span
+        <button
+          onClick={onGoHome}
           style={{
             fontFamily: 'var(--font-display)',
             fontSize: 17,
             letterSpacing: '0.01em',
             marginRight: 28,
             color: 'var(--text)',
+            background: 'transparent',
+            border: 'none',
+            padding: 0,
+            cursor: 'pointer',
           }}
+          title="Home"
         >
           KNPC
-        </span>
+        </button>
 
         {categories.map((cat) => (
           <div key={cat.category} style={{ position: 'relative' }}>

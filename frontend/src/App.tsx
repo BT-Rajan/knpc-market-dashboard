@@ -47,6 +47,12 @@ export default function App() {
           setSelectedCode(code)
           setView('dashboard')
         }}
+        onGoHome={() => {
+          setView('dashboard')
+          if (categories.length > 0 && categories[0].items.length > 0) {
+            setSelectedCode(categories[0].items[0].code)
+          }
+        }}
         role={getRole()}
         view={view}
         onChangeView={setView}

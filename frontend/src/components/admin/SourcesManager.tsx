@@ -106,6 +106,15 @@ export default function SourcesManager() {
     reload()
   }
 
+  async function removeItem(item: ItemOut) {
+    if (!window.confirm(`Remove "${item.name}" from the dashboard? It will stop appearing in the nav and ticker (its price history is kept, not deleted).`)) {
+      return
+    }
+    await api.delete(`/api/admin/items/${item.id}`)
+    if (selectedId === item.id) setSelectedId(null)
+    reload()
+  }
+
   async function scrapeNow() {
     if (!selected) return
     setScraping(true)
@@ -123,23 +132,42 @@ export default function SourcesManager() {
       <div className="panel" style={{ width: 240, padding: 12, alignSelf: 'flex-start' }}>
         <div className="eyebrow" style={{ padding: '4px 8px 10px' }}>Items</div>
         {items.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setSelectedId(item.id)}
-            style={{
-              display: 'block',
-              width: '100%',
-              textAlign: 'left',
-              background: item.id === selectedId ? 'var(--panel-raised)' : 'transparent',
-              border: 'none',
-              color: item.active ? (item.id === selectedId ? 'var(--brass-bright)' : 'var(--text)') : 'var(--text-dim)',
-              padding: '8px 10px',
-              fontSize: 13,
-              borderRadius: 3,
-            }}
-          >
-            {item.name} <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>· {item.category}</span>
-          </button>
+          <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <button
+              onClick={() => setSelectedId(item.id)}
+              style={{
+                display: 'block',
+                flex: 1,
+                minWidth: 0,
+                textAlign: 'left',
+                background: item.id === selectedId ? 'var(--panel-raised)' : 'transparent',
+                border: 'none',
+                color: item.active ? (item.id === selectedId ? 'var(--brass-bright)' : 'var(--text)') : 'var(--text-dim)',
+                padding: '8px 10px',
+                fontSize: 13,
+                borderRadius: 3,
+              }}
+            >
+              {item.name} <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>· {item.category}</span>
+            </button>
+            {item.active && (
+              <button
+                onClick={() => removeItem(item)}
+                title={`Remove ${item.name}`}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-dim)',
+                  padding: '4px 8px',
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
         ))}
 
         <hr className="hairline" style={{ margin: '10px 0' }} />
