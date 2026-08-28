@@ -112,10 +112,10 @@ SEED_CATALOG = {
     # uploaded Energy_Product_Spot_Prices.xlsx, sourced live from the EIA
     # Open Data API (petroleum/pri/spt) -- see EIA_PRODUCT_SERIES below.
     "Products": [
-        {"code": "GASOLINE_CONV_GC", "name": "Conventional Gasoline (US Gulf Coast, Regular)", "unit": "USD/gal"},
-        {"code": "ULSD_GC", "name": "Ultra-Low-Sulfur No. 2 Diesel Fuel (US Gulf Coast)", "unit": "USD/gal"},
-        {"code": "JETKERO_GC", "name": "Kerosene-Type Jet Fuel (US Gulf Coast)", "unit": "USD/gal"},
-        {"code": "PROPANE_MB", "name": "Propane (Mont Belvieu, Texas)", "unit": "USD/gal"},
+        {"code": "GASOLINE_CONV_GC", "name": "Conventional Gasoline (US Gulf Coast, Regular)", "unit": "$/gal"},
+        {"code": "ULSD_GC", "name": "Ultra-Low-Sulfur No. 2 Diesel Fuel (US Gulf Coast)", "unit": "$/gal"},
+        {"code": "JETKERO_GC", "name": "Kerosene-Type Jet Fuel (US Gulf Coast)", "unit": "$/gal"},
+        {"code": "PROPANE_MB", "name": "Propane (Mont Belvieu, Texas)", "unit": "$/gal"},
     ],
 }
 

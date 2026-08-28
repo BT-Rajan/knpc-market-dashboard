@@ -4,11 +4,15 @@ regional-proxy scrape lineup to the four EIA-sourced U.S. spot price items
 (Conventional Gasoline, ULSD, Jet Kerosene, Propane -- see config.SEED_CATALOG
 and config.EIA_PRODUCT_SERIES).
 
-Non-destructive, matching this project's migration style (see
-app/migrations.py's docstring): old product items are deactivated, not
-deleted, so their price/news history stays in the DB and nothing breaks if
-you need to look back at it. Deactivated items drop out of the nav, ticker,
-and quarterly report automatically (every query filters on Item.active).
+Retired Products items are HARD DELETED (per explicit instruction), along
+with their price history, news, sources, and scrape logs -- this is a
+deliberate exception to this project's normal additive-only migration
+style (see app/migrations.py's docstring), so there's no "undo" once it's
+run. If you want the history kept instead, deactivate the items by hand
+(set Item.active = False in the DB) rather than running this.
+
+Also updates the unit label on the 4 EIA-sourced items to "$/gal" in case
+this script (or seed()) already ran once before that label was corrected.
 
 Idempotent: safe to run more than once. Run after pulling this change and
 setting EIA_API_KEY in backend/.env:
@@ -22,7 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.db import SessionLocal
 from app.models import Item
-from app.config import RETIRED_PRODUCT_CODES, EIA_API_KEY
+from app.config import RETIRED_PRODUCT_CODES, EIA_API_KEY, SEED_CATALOG
 from app.seed import seed
 
 
@@ -38,25 +42,32 @@ def main():
     #    only fills in what's missing, matches app/seed.py's own contract).
     seed()
 
-    # 2. Deactivate the retired Products items so they disappear from the
-    #    nav/ticker/reports without losing their history.
     db = SessionLocal()
     try:
-        retired = (
-            db.query(Item)
-            .filter(Item.code.in_(RETIRED_PRODUCT_CODES), Item.active == True)  # noqa: E712
-            .all()
-        )
+        # 2. Fix the unit label on the 4 new items if they were created by
+        #    an earlier run of this script/seed() before it read "$/gal".
+        unit_by_code = {spec["code"]: spec["unit"] for spec in SEED_CATALOG["Products"]}
+        for item in db.query(Item).filter(Item.code.in_(unit_by_code)).all():
+            correct_unit = unit_by_code[item.code]
+            if item.unit != correct_unit:
+                print(f"[OK] Fixed unit for {item.code}: '{item.unit}' -> '{correct_unit}'")
+                item.unit = correct_unit
+        db.commit()
+
+        # 3. Hard-delete the retired Products items -- cascades to their
+        #    sources, price history, and news (see Item.__tablename__ ==
+        #    "items" cascade="all, delete-orphan" in app/models.py).
+        retired = db.query(Item).filter(Item.code.in_(RETIRED_PRODUCT_CODES)).all()
         for item in retired:
-            item.active = False
-            print(f"[OK] Deactivated retired product: {item.code} ({item.name})")
+            print(f"[OK] Deleted retired product: {item.code} ({item.name})")
+            db.delete(item)
         if not retired:
-            print("[OK] No active retired-product items found (already migrated)")
+            print("[OK] No retired-product items found (already migrated)")
         db.commit()
     finally:
         db.close()
 
-    print("[DONE] Products catalog now points at the EIA daily spot-price set.")
+    print("[DONE] Products catalog now contains only the 4 EIA-sourced items.")
 
 
 if __name__ == "__main__":
