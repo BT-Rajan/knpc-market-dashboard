@@ -6,7 +6,7 @@ from app.db import get_db
 from app.auth import get_current_user
 from app.schemas import AIAskRequest, AIAskResponse
 from app.services import get_item_by_code_or_404, trend_fields, recent_news, resolve_ai_key
-from app.config import DEEPSEEK_API_URL, DEEPSEEK_MODEL, CLAUDE_API_URL, CLAUDE_MODEL
+from app.ai_client import ask_deepseek, ask_claude
 
 router = APIRouter(prefix="/api/ai", tags=["ai"], dependencies=[Depends(get_current_user)])
 
@@ -31,14 +31,7 @@ def _ask_deepseek(prompt: str, api_key: str) -> str:
     if not api_key:
         raise HTTPException(status_code=503, detail="DeepSeek API key is not configured. Add it under Admin -> AI Settings.")
     try:
-        resp = requests.post(
-            DEEPSEEK_API_URL,
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": DEEPSEEK_MODEL, "messages": [{"role": "user", "content": prompt}]},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        return ask_deepseek(prompt, api_key)
     except requests.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"DeepSeek API error: {exc.response.status_code} {exc.response.text[:200]}")
     except requests.RequestException as exc:
@@ -49,23 +42,7 @@ def _ask_claude(prompt: str, api_key: str) -> str:
     if not api_key:
         raise HTTPException(status_code=503, detail="Claude API key is not configured. Add it under Admin -> AI Settings.")
     try:
-        resp = requests.post(
-            CLAUDE_API_URL,
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": CLAUDE_MODEL,
-                "max_tokens": 800,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
-        blocks = resp.json().get("content", [])
-        return "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
+        return ask_claude(prompt, api_key)
     except requests.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Claude API error: {exc.response.status_code} {exc.response.text[:200]}")
     except requests.RequestException as exc:

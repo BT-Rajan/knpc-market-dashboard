@@ -16,6 +16,20 @@ def get_item_by_code_or_404(db: Session, code: str) -> Item:
     return item
 
 
+def collapse_rows_to_weekly(rows):
+    """Groups PriceHistory rows by ISO week (key = week-ending Sunday) and
+    averages each week's rows -- collapses the repeated daily scrape rows
+    Products get between their actual ~weekly re-pricings. Returns
+    [(week_end_date, avg_price), ...] ascending. Shared by the item-page
+    weekly series, the price export, and the quarterly/monthly reports so
+    every "weekly" product figure in the system is computed the same way."""
+    buckets = defaultdict(list)
+    for r in rows:
+        week_end = r.price_date + timedelta(days=6 - r.price_date.weekday())
+        buckets[week_end].append(r.price)
+    return [(week_end, sum(prices) / len(prices)) for week_end, prices in sorted(buckets.items())]
+
+
 def _current_month_rows(db: Session, item_id: int):
     today = date.today()
     start = today.replace(day=1)
@@ -36,14 +50,7 @@ def monthly_daily_series(db: Session, item_id: int):
 def weekly_average_series(db: Session, item_id: int):
     """One point per week of the current calendar month, x-axis = end of that week (Sunday), value = average price that week."""
     rows = _current_month_rows(db, item_id)
-    buckets = defaultdict(list)
-    for r in rows:
-        week_end = r.price_date + timedelta(days=6 - r.price_date.weekday())
-        buckets[week_end].append(r.price)
-    return [
-        {"price_date": week_end, "price": sum(prices) / len(prices)}
-        for week_end, prices in sorted(buckets.items())
-    ]
+    return [{"price_date": we, "price": p} for we, p in collapse_rows_to_weekly(rows)]
 
 
 def _current_year_rows(db: Session, item_id: int):
@@ -62,14 +69,7 @@ def product_weekly_series(db: Session, item_id: int):
     last known value. One point per week recorded so far this year, x-axis = end of
     that week (Sunday), value = average of that week's rows (collapses the repeats)."""
     rows = _current_year_rows(db, item_id)
-    buckets = defaultdict(list)
-    for r in rows:
-        week_end = r.price_date + timedelta(days=6 - r.price_date.weekday())
-        buckets[week_end].append(r.price)
-    return [
-        {"price_date": week_end, "price": sum(prices) / len(prices)}
-        for week_end, prices in sorted(buckets.items())
-    ]
+    return [{"price_date": we, "price": p} for we, p in collapse_rows_to_weekly(rows)]
 
 
 def product_monthly_series(db: Session, item_id: int):
@@ -98,14 +98,7 @@ def item_price_export_rows(db: Session, item: Item):
         .all()
     )
     if item.category == "Products":
-        buckets = defaultdict(list)
-        for r in rows:
-            week_end = r.price_date + timedelta(days=6 - r.price_date.weekday())
-            buckets[week_end].append(r.price)
-        return [
-            {"date": week_end, "price": sum(prices) / len(prices)}
-            for week_end, prices in sorted(buckets.items())
-        ]
+        return [{"date": we, "price": p} for we, p in collapse_rows_to_weekly(rows)]
     return [{"date": r.price_date, "price": r.price} for r in rows]
 
 
