@@ -36,7 +36,7 @@ def start():
     minutes = _current_frequency_minutes()
     _scheduler.add_job(
         _job, IntervalTrigger(minutes=minutes), id=_JOB_ID,
-        replace_existing=True, next_run_time=None,
+        replace_existing=True,
     )
     _scheduler.start()
     logger.info("Scheduler started, interval=%s minutes", minutes)
