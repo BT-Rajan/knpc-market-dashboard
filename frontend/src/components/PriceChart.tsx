@@ -1,8 +1,30 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { PricePoint } from '../types'
 
-export default function PriceChart({ title, series, unit }: { title: string; series: PricePoint[]; unit: string }) {
-  const data = series.map((p) => ({ date: p.price_date.slice(5), price: p.price }))
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function formatLabel(dateStr: string, labelFormat: 'date' | 'month') {
+  if (labelFormat === 'month') {
+    return MONTHS[parseInt(dateStr.slice(5, 7), 10) - 1] ?? dateStr.slice(5, 7)
+  }
+  return dateStr.slice(5)
+}
+
+export default function PriceChart({
+  title,
+  series,
+  unit,
+  labelFormat = 'date',
+}: {
+  title: string
+  series: PricePoint[]
+  unit: string
+  labelFormat?: 'date' | 'month'
+}) {
+  const data = series.map((p) => ({ date: formatLabel(p.price_date, labelFormat), price: p.price }))
+  // Thin the x-axis so a long series (a full year of weeks, a month of days) doesn't
+  // render an unreadable tick for every single point.
+  const tickInterval = data.length > 8 ? Math.ceil(data.length / 8) - 1 : 0
 
   return (
     <div className="panel" style={{ padding: '18px 18px 8px', flex: 1, minWidth: 280 }}>
@@ -17,6 +39,7 @@ export default function PriceChart({ title, series, unit }: { title: string; ser
             <CartesianGrid stroke="var(--border-soft)" vertical={false} />
             <XAxis
               dataKey="date"
+              interval={tickInterval}
               tick={{ fill: 'var(--text-dim)', fontSize: 11, fontFamily: 'var(--font-mono)' }}
               axisLine={{ stroke: 'var(--border)' }}
               tickLine={false}

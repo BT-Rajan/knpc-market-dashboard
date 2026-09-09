@@ -45,6 +45,44 @@ def weekly_average_series(db: Session, item_id: int):
     ]
 
 
+def _current_year_rows(db: Session, item_id: int):
+    today = date.today()
+    start = today.replace(month=1, day=1)
+    return (
+        db.query(PriceHistory)
+        .filter(PriceHistory.item_id == item_id, PriceHistory.price_date >= start, PriceHistory.price_date <= today)
+        .order_by(PriceHistory.price_date.asc())
+        .all()
+    )
+
+
+def product_weekly_series(db: Session, item_id: int):
+    """Products are only re-priced roughly once a week, so daily scrape rows repeat the
+    last known value. One point per week recorded so far this year, x-axis = end of
+    that week (Sunday), value = average of that week's rows (collapses the repeats)."""
+    rows = _current_year_rows(db, item_id)
+    buckets = defaultdict(list)
+    for r in rows:
+        week_end = r.price_date + timedelta(days=6 - r.price_date.weekday())
+        buckets[week_end].append(r.price)
+    return [
+        {"price_date": week_end, "price": sum(prices) / len(prices)}
+        for week_end, prices in sorted(buckets.items())
+    ]
+
+
+def product_monthly_series(db: Session, item_id: int):
+    """One point per calendar month recorded so far this year, x-axis = the month, value = average price that month."""
+    rows = _current_year_rows(db, item_id)
+    buckets = defaultdict(list)
+    for r in rows:
+        buckets[r.price_date.replace(day=1)].append(r.price)
+    return [
+        {"price_date": month_start, "price": sum(prices) / len(prices)}
+        for month_start, prices in sorted(buckets.items())
+    ]
+
+
 def latest_two_prices(db: Session, item_id: int):
     rows = (
         db.query(PriceHistory)

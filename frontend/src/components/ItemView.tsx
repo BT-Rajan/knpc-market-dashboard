@@ -65,8 +65,17 @@ export default function ItemView({ code }: { code: string }) {
       </div>
 
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
-        <PriceChart title="Monthly movement" series={item.monthly_series} unit={item.unit} />
-        <PriceChart title="Weekly movement" series={item.weekly_series} unit={item.unit} />
+        {item.category === 'Products' ? (
+          <>
+            <PriceChart title="Weekly movement" series={item.weekly_series} unit={item.unit} />
+            <PriceChart title="Monthly movement" series={item.monthly_series} unit={item.unit} labelFormat="month" />
+          </>
+        ) : (
+          <>
+            <PriceChart title="Monthly movement" series={item.monthly_series} unit={item.unit} />
+            <PriceChart title="Weekly movement" series={item.weekly_series} unit={item.unit} />
+          </>
+        )}
       </div>
 
       <NewsList news={item.news} />

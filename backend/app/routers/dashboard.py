@@ -12,6 +12,8 @@ from app.services import (
     get_item_by_code_or_404,
     monthly_daily_series,
     weekly_average_series,
+    product_weekly_series,
+    product_monthly_series,
     trend_fields,
     recent_news,
     general_market_news,
@@ -49,8 +51,12 @@ def get_ticker(db: Session = Depends(get_db)):
 def get_item_detail(code: str, db: Session = Depends(get_db)):
     item = get_item_by_code_or_404(db, code)
     fields = trend_fields(db, item.id)
-    monthly = monthly_daily_series(db, item.id)
-    weekly = weekly_average_series(db, item.id)
+    if item.category == "Products":
+        weekly = product_weekly_series(db, item.id)
+        monthly = product_monthly_series(db, item.id)
+    else:
+        monthly = monthly_daily_series(db, item.id)
+        weekly = weekly_average_series(db, item.id)
     news = [NewsOut.model_validate(n) for n in recent_news(db, item.id)]
     return ItemDetail(
         code=item.code, name=item.name, category=item.category, unit=item.unit,
