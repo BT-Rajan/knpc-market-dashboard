@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { ItemDetail } from '../types'
 import PriceChart from './PriceChart'
-import NewsList from './NewsList'
 
 export default function ItemView({ code }: { code: string }) {
   const [item, setItem] = useState<ItemDetail | null>(null)
@@ -77,8 +76,6 @@ export default function ItemView({ code }: { code: string }) {
           </>
         )}
       </div>
-
-      <NewsList news={item.news} />
     </div>
   )
 }
