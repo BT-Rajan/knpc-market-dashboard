@@ -67,7 +67,10 @@ SQLALCHEMY_DATABASE_URL = os.getenv(
 )
 
 # --- Scraping ---
-DEFAULT_SCRAPE_FREQUENCY_MINUTES = int(os.getenv("SCRAPE_FREQUENCY_MINUTES", 30))
+# Crude benchmarks are re-priced daily and products roughly weekly, so once a
+# day is plenty; the admin panel (Admin -> Scrape Control) can override this
+# per-deployment without a code change.
+DEFAULT_SCRAPE_FREQUENCY_MINUTES = int(os.getenv("SCRAPE_FREQUENCY_MINUTES", 1440))
 SCRAPE_REQUEST_TIMEOUT = 15
 SCRAPE_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
