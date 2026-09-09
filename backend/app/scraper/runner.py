@@ -7,7 +7,7 @@ from bs4 import BeautifulSoup
 from app.models import Item, Source, PriceHistory, NewsItem, ScrapeLog
 from app.scraper.base import fetch, extract_value, extract_news, ScrapeError
 from app.config import SOURCE_URLS, SCRAPE_USER_AGENT, SCRAPE_REQUEST_TIMEOUT, EIA_PRODUCT_SERIES
-from app.ai_news_classifier import classify_urls
+from app.ai_news_classifier import classify_urls, NEWS_CATEGORIES
 from app.services import resolve_ai_key
 from app import eia_client
 import requests
@@ -20,14 +20,14 @@ def _log(db: Session, item_code, source_name, status, message):
     logger.info("[%s] %s / %s: %s", status.upper(), item_code, source_name, message)
 
 
-def _save_news(db: Session, item_id, headline: str, url: str, source_name: str):
+def _save_news(db: Session, item_id, headline: str, url: str, source_name: str, category: str = None):
     dup = (
         db.query(NewsItem)
         .filter(NewsItem.item_id == item_id, NewsItem.headline == headline)
         .first()
     )
     if not dup:
-        db.add(NewsItem(item_id=item_id, headline=headline, url=url, source=source_name))
+        db.add(NewsItem(item_id=item_id, headline=headline, url=url, source=source_name, category=category))
 
 
 def _collect_news_for_item(db: Session, item: Item):
@@ -155,12 +155,16 @@ def collect_general_market_news(db: Session, limit: int = 20):
 
         count = 0
         item_matches = 0
-        for url in grouping.get("general", []):
-            topic = topic_by_url.get(url)
-            if not topic:
-                continue
-            _save_news(db, None, topic["title"], topic["url"], "OilPrice")
-            count += 1
+        for category, urls in grouping.get("categories", {}).items():
+            # A category name the model invented shouldn't drop the headline --
+            # file it under the catch-all instead of losing it.
+            target_category = category if category in NEWS_CATEGORIES else "Other Commodities"
+            for url in urls:
+                topic = topic_by_url.get(url)
+                if not topic:
+                    continue
+                _save_news(db, None, topic["title"], topic["url"], "OilPrice", category=target_category)
+                count += 1
 
         for item_name, urls in grouping.get("items", {}).items():
             item = item_by_name.get(str(item_name).strip().lower())
@@ -168,21 +172,22 @@ def collect_general_market_news(db: Session, limit: int = 20):
                 topic = topic_by_url.get(url)
                 if not topic:
                     continue
-                # An item name the model invented/misspelled shouldn't drop
-                # the headline -- file it as general instead of losing it.
-                target_item_id = item.id if item else None
-                if target_item_id:
+                if item:
                     item_matches += 1
-                _save_news(db, target_item_id, topic["title"], topic["url"], "OilPrice")
+                    _save_news(db, item.id, topic["title"], topic["url"], "OilPrice")
+                else:
+                    # An item name the model invented/misspelled shouldn't drop
+                    # the headline -- file it under the catch-all instead of losing it.
+                    _save_news(db, None, topic["title"], topic["url"], "OilPrice", category="Other Commodities")
                 count += 1
 
         db.commit()
         if classify_status == "no_api_key":
-            status_note = "no DeepSeek key configured (Admin -> AI Settings) -- filed all as general"
+            status_note = "no DeepSeek key configured (Admin -> AI Settings) -- filed all under Other Commodities"
         elif classify_status == "ok":
-            status_note = f"DeepSeek classified {item_matches} to a specific item, rest general"
+            status_note = f"DeepSeek classified {item_matches} to a specific item, rest by topic category"
         else:
-            status_note = f"DeepSeek classification failed ({classify_status}) -- filed all as general"
+            status_note = f"DeepSeek classification failed ({classify_status}) -- filed all under Other Commodities"
         _log(db, None, "OilPrice (general)", "success", f"logged={count} of {len(topics)} topics fetched; {status_note}")
         return count
     except Exception as exc:

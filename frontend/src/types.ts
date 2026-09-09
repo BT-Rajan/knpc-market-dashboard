@@ -32,6 +32,11 @@ export interface NewsOut {
   collected_at: string
 }
 
+export interface NewsCategoryOut {
+  category: string
+  news: NewsOut[]
+}
+
 export interface ItemDetail {
   code: string
   name: string

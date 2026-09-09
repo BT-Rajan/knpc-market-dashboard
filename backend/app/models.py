@@ -67,6 +67,7 @@ class NewsItem(Base):
 
     id = Column(Integer, primary_key=True)
     item_id = Column(Integer, ForeignKey("items.id"), nullable=True)  # null = general market news
+    category = Column(String(40), nullable=True)  # only set for general news: Crude | Products | EV & Renewables | Other Commodities
     headline = Column(String(500), nullable=False)
     url = Column(String(700), nullable=True)
     source = Column(String(120), nullable=True)

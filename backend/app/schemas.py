@@ -97,6 +97,11 @@ class NewsOut(BaseModel):
     collected_at: datetime
 
 
+class NewsCategoryOut(BaseModel):
+    category: str
+    news: List[NewsOut]
+
+
 class ItemDetail(BaseModel):
     code: str
     name: str

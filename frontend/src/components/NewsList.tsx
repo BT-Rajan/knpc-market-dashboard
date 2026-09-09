@@ -1,9 +1,9 @@
 import { NewsOut } from '../types'
 
-export default function NewsList({ news }: { news: NewsOut[] }) {
+export default function NewsList({ news, title = 'News' }: { news: NewsOut[]; title?: string }) {
   return (
     <div className="panel" style={{ padding: 20 }}>
-      <div className="eyebrow" style={{ marginBottom: 14 }}>News</div>
+      <div className="eyebrow" style={{ marginBottom: 14 }}>{title}</div>
       {news.length === 0 ? (
         <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>No headlines collected yet.</div>
       ) : (

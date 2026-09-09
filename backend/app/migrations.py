@@ -21,6 +21,7 @@ ADDITIVE_COLUMNS = [
     ("email_credentials", "last_failure_at", "DATETIME NULL"),
     ("email_credentials", "last_failure_message", "TEXT NULL"),
     ("email_credentials", "consecutive_failures", "INT DEFAULT 0"),
+    ("news_items", "category", "VARCHAR(40) NULL"),
 ]
 
 

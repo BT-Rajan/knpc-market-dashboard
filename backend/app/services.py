@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models import Item, PriceHistory, NewsItem, AICredentials, EmailCredentials
 from app.config import DEEPSEEK_API_KEY, CLAUDE_API_KEY
 from app.crypto import decrypt
+from app.ai_news_classifier import NEWS_CATEGORIES
 
 
 def get_item_by_code_or_404(db: Session, code: str) -> Item:
@@ -123,16 +124,24 @@ def recent_news(db: Session, item_id: int, limit: int = 10):
     )
 
 
-def general_market_news(db: Session, limit: int = 20):
+def general_market_news_by_category(db: Session, limit_per_category: int = 20):
     """Item-independent headlines (item_id is NULL) -- the global news feed,
-    separate from any single benchmark/product's page."""
-    return (
+    separate from any single benchmark/product's page -- grouped into the
+    fixed topic categories, most recent first within each. A row saved
+    before categorization existed, or classified as something unrecognized,
+    falls into 'Other Commodities' rather than being dropped."""
+    rows = (
         db.query(NewsItem)
         .filter(NewsItem.item_id.is_(None))
         .order_by(NewsItem.collected_at.desc())
-        .limit(limit)
         .all()
     )
+    buckets: dict = {cat: [] for cat in NEWS_CATEGORIES}
+    for r in rows:
+        cat = r.category if r.category in buckets else "Other Commodities"
+        if len(buckets[cat]) < limit_per_category:
+            buckets[cat].append(r)
+    return [{"category": cat, "news": buckets[cat]} for cat in NEWS_CATEGORIES]
 
 
 def get_ai_credentials_row(db: Session) -> AICredentials:
