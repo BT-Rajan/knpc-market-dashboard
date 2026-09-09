@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import date, timedelta
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -14,15 +15,34 @@ def get_item_by_code_or_404(db: Session, code: str) -> Item:
     return item
 
 
-def price_series(db: Session, item_id: int, days: int):
-    since = date.today() - timedelta(days=days)
-    rows = (
+def _current_month_rows(db: Session, item_id: int):
+    today = date.today()
+    start = today.replace(day=1)
+    return (
         db.query(PriceHistory)
-        .filter(PriceHistory.item_id == item_id, PriceHistory.price_date >= since)
+        .filter(PriceHistory.item_id == item_id, PriceHistory.price_date >= start, PriceHistory.price_date <= today)
         .order_by(PriceHistory.price_date.asc())
         .all()
     )
+
+
+def monthly_daily_series(db: Session, item_id: int):
+    """Daily prices for every day recorded so far in the current calendar month."""
+    rows = _current_month_rows(db, item_id)
     return [{"price_date": r.price_date, "price": r.price} for r in rows]
+
+
+def weekly_average_series(db: Session, item_id: int):
+    """One point per week of the current calendar month, x-axis = end of that week (Sunday), value = average price that week."""
+    rows = _current_month_rows(db, item_id)
+    buckets = defaultdict(list)
+    for r in rows:
+        week_end = r.price_date + timedelta(days=6 - r.price_date.weekday())
+        buckets[week_end].append(r.price)
+    return [
+        {"price_date": week_end, "price": sum(prices) / len(prices)}
+        for week_end, prices in sorted(buckets.items())
+    ]
 
 
 def latest_two_prices(db: Session, item_id: int):

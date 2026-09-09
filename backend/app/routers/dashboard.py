@@ -8,7 +8,14 @@ from app.db import get_db
 from app.auth import get_current_user
 from app.models import Item
 from app.schemas import NavCategory, NavItem, TickerEntry, ItemDetail, NewsOut
-from app.services import get_item_by_code_or_404, price_series, trend_fields, recent_news, general_market_news
+from app.services import (
+    get_item_by_code_or_404,
+    monthly_daily_series,
+    weekly_average_series,
+    trend_fields,
+    recent_news,
+    general_market_news,
+)
 
 router = APIRouter(prefix="/api", tags=["dashboard"], dependencies=[Depends(get_current_user)])
 
@@ -42,8 +49,8 @@ def get_ticker(db: Session = Depends(get_db)):
 def get_item_detail(code: str, db: Session = Depends(get_db)):
     item = get_item_by_code_or_404(db, code)
     fields = trend_fields(db, item.id)
-    weekly = price_series(db, item.id, days=7)
-    monthly = price_series(db, item.id, days=30)
+    monthly = monthly_daily_series(db, item.id)
+    weekly = weekly_average_series(db, item.id)
     news = [NewsOut.model_validate(n) for n in recent_news(db, item.id)]
     return ItemDetail(
         code=item.code, name=item.name, category=item.category, unit=item.unit,
