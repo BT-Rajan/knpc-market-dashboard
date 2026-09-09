@@ -84,6 +84,31 @@ def product_monthly_series(db: Session, item_id: int):
     ]
 
 
+def item_price_export_rows(db: Session, item: Item):
+    """Full recorded price history for one item, shaped for the price export
+    workbook: every recorded day for Crude items, or one row per week
+    (week-ending date, averaged) for Products -- Products are only re-priced
+    roughly once a week, so daily scrape rows just repeat the last known
+    value, and exporting them as-is would show the same price many times
+    over under a misleading 'daily' label."""
+    rows = (
+        db.query(PriceHistory)
+        .filter(PriceHistory.item_id == item.id)
+        .order_by(PriceHistory.price_date.asc())
+        .all()
+    )
+    if item.category == "Products":
+        buckets = defaultdict(list)
+        for r in rows:
+            week_end = r.price_date + timedelta(days=6 - r.price_date.weekday())
+            buckets[week_end].append(r.price)
+        return [
+            {"date": week_end, "price": sum(prices) / len(prices)}
+            for week_end, prices in sorted(buckets.items())
+        ]
+    return [{"date": r.price_date, "price": r.price} for r in rows]
+
+
 def latest_two_prices(db: Session, item_id: int):
     rows = (
         db.query(PriceHistory)
