@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import date, timedelta
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Item, PriceHistory, NewsItem, AICredentials, EmailCredentials
@@ -14,6 +15,32 @@ def get_item_by_code_or_404(db: Session, code: str) -> Item:
     if not item:
         raise HTTPException(status_code=404, detail=f"Unknown item code '{code}'")
     return item
+
+
+def get_global_last_update(db: Session):
+    """Most recent timestamp anything was actually written by a scrape cycle
+    -- a price row or a collected headline -- shown on every page so it's
+    obvious at a glance whether scraping is still running, not just whether
+    the scheduler thinks it is."""
+    last_price = db.query(func.max(PriceHistory.collected_at)).scalar()
+    last_news = db.query(func.max(NewsItem.collected_at)).scalar()
+    candidates = [t for t in (last_price, last_news) if t is not None]
+    return max(candidates) if candidates else None
+
+
+def get_last_update_by_item(db: Session):
+    """Most recent PriceHistory.collected_at per active item, for the Admin
+    scrape-status table -- one row per tracked crude benchmark and product."""
+    items = db.query(Item).filter(Item.active == True).order_by(Item.category, Item.name).all()  # noqa: E712
+    last_by_item = dict(
+        db.query(PriceHistory.item_id, func.max(PriceHistory.collected_at))
+        .group_by(PriceHistory.item_id)
+        .all()
+    )
+    return [
+        {"code": i.code, "name": i.name, "category": i.category, "last_update": last_by_item.get(i.id)}
+        for i in items
+    ]
 
 
 def collapse_rows_to_weekly(rows):

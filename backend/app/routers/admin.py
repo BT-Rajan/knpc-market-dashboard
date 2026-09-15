@@ -2,19 +2,20 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import PlainTextResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.auth import get_current_admin
-from app.models import Item, Source, ScrapeLog, ScrapeSetting
+from app.models import Item, Source, ScrapeLog, ScrapeSetting, NewsItem
 from app.schemas import (
     ItemOut, ItemCreate, SourceOut, SourceCreate, SourceUpdate,
     ScrapeLogOut, ScrapeSettingOut, ScrapeSettingUpdate,
-    AICredentialsOut, AICredentialsUpdate,
+    AICredentialsOut, AICredentialsUpdate, ScrapeStatusOut,
 )
 from app.scraper.runner import run_full_scrape, scrape_item
 from app.scraper import scheduler as scrape_scheduler
-from app.services import get_item_by_code_or_404, get_ai_credentials_row
+from app.services import get_item_by_code_or_404, get_ai_credentials_row, get_last_update_by_item
 
 router = APIRouter(prefix="/api/admin", tags=["admin"], dependencies=[Depends(get_current_admin)])
 
@@ -115,6 +116,14 @@ def update_settings(body: ScrapeSettingUpdate, db: Session = Depends(get_db)):
     db.commit()
     scrape_scheduler.reschedule(body.frequency_minutes)
     return ScrapeSettingOut(frequency_minutes=body.frequency_minutes)
+
+
+@router.get("/scrape/status", response_model=ScrapeStatusOut)
+def get_scrape_status(db: Session = Depends(get_db)):
+    """Last time each tracked item's price was actually updated, plus the
+    news feed -- the Scrape Control status table."""
+    news_last_update = db.query(func.max(NewsItem.collected_at)).scalar()
+    return ScrapeStatusOut(items=get_last_update_by_item(db), news_last_update=news_last_update)
 
 
 # --- Logs ---

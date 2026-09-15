@@ -86,6 +86,22 @@ export interface ScrapeSettingOut {
   frequency_minutes: number
 }
 
+export interface LastUpdateOut {
+  last_update: string | null
+}
+
+export interface ItemLastUpdateOut {
+  code: string
+  name: string
+  category: string
+  last_update: string | null
+}
+
+export interface ScrapeStatusOut {
+  items: ItemLastUpdateOut[]
+  news_last_update: string | null
+}
+
 export interface AIAskResponse {
   provider: string
   answer: string

@@ -89,6 +89,22 @@ class TickerEntry(BaseModel):
     as_of: Optional[date] = None
 
 
+class LastUpdateOut(BaseModel):
+    last_update: Optional[datetime] = None
+
+
+class ItemLastUpdateOut(BaseModel):
+    code: str
+    name: str
+    category: str
+    last_update: Optional[datetime] = None
+
+
+class ScrapeStatusOut(BaseModel):
+    items: List[ItemLastUpdateOut]
+    news_last_update: Optional[datetime] = None
+
+
 class NewsOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     headline: str

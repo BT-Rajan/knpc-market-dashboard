@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.auth import get_current_user
 from app.models import Item
-from app.schemas import NavCategory, NavItem, TickerEntry, ItemDetail, NewsOut, NewsCategoryOut
+from app.schemas import NavCategory, NavItem, TickerEntry, ItemDetail, NewsOut, NewsCategoryOut, LastUpdateOut
 from app.services import (
     get_item_by_code_or_404,
     monthly_daily_series,
@@ -17,6 +17,7 @@ from app.services import (
     trend_fields,
     recent_news,
     general_market_news_by_category,
+    get_global_last_update,
 )
 
 router = APIRouter(prefix="/api", tags=["dashboard"], dependencies=[Depends(get_current_user)])
@@ -29,6 +30,13 @@ def get_market_news(db: Session = Depends(get_db)):
         NewsCategoryOut(category=group["category"], news=[NewsOut.model_validate(n) for n in group["news"]])
         for group in general_market_news_by_category(db)
     ]
+
+
+@router.get("/status", response_model=LastUpdateOut)
+def get_status(db: Session = Depends(get_db)):
+    """When the scraper last actually wrote a price or a headline -- shown
+    on every page so it's obvious at a glance whether data is current."""
+    return LastUpdateOut(last_update=get_global_last_update(db))
 
 
 @router.get("/nav", response_model=List[NavCategory])

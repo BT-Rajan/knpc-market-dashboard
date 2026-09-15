@@ -1,5 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { NavCategory } from '../types'
+import { NavCategory, LastUpdateOut } from '../types'
+import { api } from '../api/client'
+
+const STATUS_POLL_MS = 60_000
+
+function formatRelative(iso: string): string {
+  const diffSec = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000))
+  if (diffSec < 60) return 'just now'
+  const diffMin = Math.floor(diffSec / 60)
+  if (diffMin < 60) return `${diffMin}m ago`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h ago`
+  return `${Math.floor(diffHr / 24)}d ago`
+}
 
 interface Props {
   categories: NavCategory[]
@@ -18,6 +31,7 @@ export default function NavBar({
   categories, selectedCode, onSelect, role, view, onChangeView, onAskAI, onLogout, username, onGoHome,
 }: Props) {
   const [openCategory, setOpenCategory] = useState<string | null>(null)
+  const [lastUpdate, setLastUpdate] = useState<string | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -28,6 +42,24 @@ export default function NavBar({
     }
     document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const load = () => {
+      api
+        .get<LastUpdateOut>('/api/status')
+        .then((d) => !cancelled && setLastUpdate(d.last_update))
+        .catch(() => {
+          /* status indicator is non-critical; silently retry on next poll */
+        })
+    }
+    load()
+    const id = setInterval(load, STATUS_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
   }, [])
 
   return (
@@ -122,6 +154,15 @@ export default function NavBar({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        {lastUpdate && (
+          <span
+            className="mono eyebrow"
+            title={new Date(lastUpdate).toLocaleString()}
+            style={{ marginRight: 6, whiteSpace: 'nowrap' }}
+          >
+            Data updated {formatRelative(lastUpdate)}
+          </span>
+        )}
         <button
           className={view === 'news' ? 'btn btn-brass' : 'btn'}
           onClick={() => onChangeView(view === 'news' ? 'dashboard' : 'news')}
