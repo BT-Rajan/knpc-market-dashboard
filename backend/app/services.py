@@ -22,10 +22,19 @@ def collapse_rows_to_weekly(rows):
     Products get between their actual ~weekly re-pricings. Returns
     [(week_end_date, avg_price), ...] ascending. Shared by the item-page
     weekly series, the price export, and the quarterly/monthly reports so
-    every "weekly" product figure in the system is computed the same way."""
+    every "weekly" product figure in the system is computed the same way.
+
+    The current, still-in-progress week's natural Sunday hasn't happened yet,
+    so its bucket key is capped at today -- otherwise the chart plots a price
+    reading against a date in the future. Every completed week's Sunday is
+    already <= today, so this only ever touches the one open week and never
+    collapses two different weeks into the same bucket."""
+    today = date.today()
     buckets = defaultdict(list)
     for r in rows:
         week_end = r.price_date + timedelta(days=6 - r.price_date.weekday())
+        if week_end > today:
+            week_end = today
         buckets[week_end].append(r.price)
     return [(week_end, sum(prices) / len(prices)) for week_end, prices in sorted(buckets.items())]
 
