@@ -20,8 +20,16 @@ Design notes:
   in the Source.url the way scrape URLs are -- it's injected onto the
   request at fetch time so it never lands in the admin-visible sources
   table or scrape logs.
+- Every lookup returns (price_date, value), where price_date is EIA's own
+  "period" field for that reading -- not the day we happen to fetch it.
+  These series aren't actually re-assessed every calendar day, so without
+  this, a quiet day (EIA hasn't published anything new) would get logged
+  as a fresh reading dated today, indistinguishable from a real update.
+  Callers store the price under EIA's own date, so a day with nothing new
+  just doesn't add a row rather than silently duplicating the last value.
 """
 import logging
+from datetime import date
 from typing import Optional
 from urllib.parse import urlencode, urlparse, parse_qs
 
@@ -80,7 +88,18 @@ def fetch_source_response(url: str) -> requests.Response:
     return resp
 
 
-def _latest_value_for_series(series_id: str) -> Optional[float]:
+def _parse_period(raw) -> Optional[date]:
+    try:
+        return date.fromisoformat(str(raw))
+    except (TypeError, ValueError):
+        return None
+
+
+def _latest_reading_for_series(series_id: str) -> Optional[tuple]:
+    """Returns (price_date, value) for the most recent period EIA has
+    actually published for this series, or None if it has no data. If EIA's
+    own period string can't be parsed (unexpected format), falls back to
+    today's date rather than dropping a reading we did successfully fetch."""
     data = _get(
         "petroleum/pri/spt/data/",
         {
@@ -96,10 +115,11 @@ def _latest_value_for_series(series_id: str) -> Optional[float]:
     rows = data.get("response", {}).get("data", [])
     if not rows:
         return None
-    raw = rows[0].get("value")
-    if raw is None or raw == "":
+    raw_value = rows[0].get("value")
+    if raw_value is None or raw_value == "":
         return None
-    return float(raw)
+    price_date = _parse_period(rows[0].get("period")) or date.today()
+    return price_date, float(raw_value)
 
 
 def resolve_series_id(product_keyword: str, location_keyword: str) -> Optional[str]:
@@ -138,13 +158,15 @@ def resolve_series_id(product_keyword: str, location_keyword: str) -> Optional[s
     return best_id
 
 
-def fetch_latest_value(series_id: str, product_keyword: str = "", location_keyword: str = "") -> float:
-    """Latest daily spot price for series_id. Falls back to a name-based
-    metadata search if the configured series_id returns nothing and keywords
-    were supplied."""
-    value = _latest_value_for_series(series_id)
-    if value is not None:
-        return value
+def fetch_latest_value(series_id: str, product_keyword: str = "", location_keyword: str = "") -> tuple:
+    """Returns (price_date, value) for the latest EIA-published reading of
+    series_id -- price_date is EIA's own reported date for that value, not
+    the day we happen to fetch it. Falls back to a name-based metadata
+    search if the configured series_id returns nothing and keywords were
+    supplied."""
+    reading = _latest_reading_for_series(series_id)
+    if reading is not None:
+        return reading
 
     if not (product_keyword and location_keyword):
         raise EiaError(f"No EIA series data for '{series_id}'")
@@ -159,19 +181,19 @@ def fetch_latest_value(series_id: str, product_keyword: str = "", location_keywo
     if not resolved_id:
         raise EiaError(f"No EIA series data for '{series_id}' and no name-match fallback found")
 
-    value = _latest_value_for_series(resolved_id)
-    if value is None:
+    reading = _latest_reading_for_series(resolved_id)
+    if reading is None:
         raise EiaError(f"Resolved EIA series '{resolved_id}' also returned no data")
-    return value
+    return reading
 
 
-def fetch_price_from_source_url(url: str, fallback_query: Optional[tuple] = None) -> float:
+def fetch_price_from_source_url(url: str, fallback_query: Optional[tuple] = None) -> tuple:
     """Entry point used by scraper/runner.py for source_type == 'eia_api'.
-    Reads the series ID straight out of the Source.url's facets[series][]
-    query param (so admins can repoint a source at a different EIA series
-    from the admin panel like any other source), and falls back to
-    resolve_series_id() using fallback_query = (product_keyword,
-    location_keyword) if that series comes back empty."""
+    Returns (price_date, value). Reads the series ID straight out of the
+    Source.url's facets[series][] query param (so admins can repoint a
+    source at a different EIA series from the admin panel like any other
+    source), and falls back to resolve_series_id() using fallback_query =
+    (product_keyword, location_keyword) if that series comes back empty."""
     series_ids = parse_qs(urlparse(url).query).get("facets[series][]")
     if not series_ids:
         raise EiaError(f"Source URL has no facets[series][] param: {url}")

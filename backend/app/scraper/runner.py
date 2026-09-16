@@ -69,15 +69,18 @@ def scrape_item(db: Session, item: Item) -> bool:
         try:
             if source.source_type == "eia_api":
                 fallback_query = EIA_PRODUCT_SERIES.get(item.code, {}).get("query")
-                price = eia_client.fetch_price_from_source_url(source.url, fallback_query)
+                # EIA's own reported date for this value, not today -- these series
+                # aren't actually re-assessed every calendar day, so stamping today's
+                # date on a value EIA hasn't refreshed would fabricate a new reading.
+                price_date, price = eia_client.fetch_price_from_source_url(source.url, fallback_query)
             else:
                 resp = fetch(source.url)
                 price = extract_value(source, resp)
+                price_date = date.today()
 
-            today = date.today()
             existing = (
                 db.query(PriceHistory)
-                .filter(PriceHistory.item_id == item.id, PriceHistory.price_date == today)
+                .filter(PriceHistory.item_id == item.id, PriceHistory.price_date == price_date)
                 .first()
             )
             if existing:
@@ -87,10 +90,10 @@ def scrape_item(db: Session, item: Item) -> bool:
             else:
                 db.add(PriceHistory(
                     item_id=item.id, source_id=source.id,
-                    price_date=today, price=price,
+                    price_date=price_date, price=price,
                 ))
 
-            _log(db, item.code, source.name, "success", f"price={price}")
+            _log(db, item.code, source.name, "success", f"price={price} (date={price_date})")
             db.commit()
             price_ok = True
             break
