@@ -20,14 +20,17 @@ def _log(db: Session, item_code, source_name, status, message):
     logger.info("[%s] %s / %s: %s", status.upper(), item_code, source_name, message)
 
 
-def _save_news(db: Session, item_id, headline: str, url: str, source_name: str, category: str = None):
+def _save_news(db: Session, item_id, headline: str, url: str, source_name: str, category: str = None, sentiment: str = None):
     dup = (
         db.query(NewsItem)
         .filter(NewsItem.item_id == item_id, NewsItem.headline == headline)
         .first()
     )
     if not dup:
-        db.add(NewsItem(item_id=item_id, headline=headline, url=url, source=source_name, category=category))
+        db.add(NewsItem(
+            item_id=item_id, headline=headline, url=url, source=source_name,
+            category=category, sentiment=sentiment,
+        ))
 
 
 def _collect_news_for_item(db: Session, item: Item):
@@ -152,6 +155,7 @@ def collect_general_market_news(db: Session, limit: int = 20):
 
         grouping, classify_status = classify_urls([t["url"] for t in topics], [i.name for i in items], api_key)
         topic_by_url = {t["url"]: t for t in topics}
+        sentiment_by_url = grouping.get("sentiment", {})
 
         count = 0
         item_matches = 0
@@ -163,7 +167,10 @@ def collect_general_market_news(db: Session, limit: int = 20):
                 topic = topic_by_url.get(url)
                 if not topic:
                     continue
-                _save_news(db, None, topic["title"], topic["url"], "OilPrice", category=target_category)
+                _save_news(
+                    db, None, topic["title"], topic["url"], "OilPrice",
+                    category=target_category, sentiment=sentiment_by_url.get(url),
+                )
                 count += 1
 
         for item_name, urls in grouping.get("items", {}).items():
@@ -174,11 +181,14 @@ def collect_general_market_news(db: Session, limit: int = 20):
                     continue
                 if item:
                     item_matches += 1
-                    _save_news(db, item.id, topic["title"], topic["url"], "OilPrice")
+                    _save_news(db, item.id, topic["title"], topic["url"], "OilPrice", sentiment=sentiment_by_url.get(url))
                 else:
                     # An item name the model invented/misspelled shouldn't drop
                     # the headline -- file it under the catch-all instead of losing it.
-                    _save_news(db, None, topic["title"], topic["url"], "OilPrice", category="Other Commodities")
+                    _save_news(
+                        db, None, topic["title"], topic["url"], "OilPrice",
+                        category="Other Commodities", sentiment=sentiment_by_url.get(url),
+                    )
                 count += 1
 
         db.commit()

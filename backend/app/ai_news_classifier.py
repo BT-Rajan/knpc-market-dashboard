@@ -19,15 +19,15 @@ NEWS_CATEGORIES = ["Crude", "Products", "EV & Renewables", "Other Commodities"]
 def classify_urls(urls: list[str], item_names: list[str], api_key: str) -> tuple[dict, str]:
     """Returns (grouping, status). grouping is {"items": {name: [...]},
     "categories": {"Crude": [...], "Products": [...], "EV & Renewables": [...],
-    "Other Commodities": [...]}}. status is "ok", "no_api_key" (nothing
-    configured under Admin -> AI Settings), or "error: <detail>" (the
-    call/parse failed) -- callers should log this so 'everything landed in
-    Other Commodities' has a visible reason instead of looking identical to
-    a real classification.
+    "Other Commodities": [...]}, "sentiment": {"<url>": "up"|"down"|"neutral"}}.
+    status is "ok", "no_api_key" (nothing configured under Admin -> AI
+    Settings), or "error: <detail>" (the call/parse failed) -- callers should
+    log this so 'everything landed in Other Commodities' has a visible reason
+    instead of looking identical to a real classification.
     Only the URLs are sent to the model -- no scraped article text/titles --
     since the URL slug alone is normally enough to tell what an oilprice.com
     piece is about."""
-    fallback = {"items": {}, "categories": {"Other Commodities": list(urls)}}
+    fallback = {"items": {}, "categories": {"Other Commodities": list(urls)}, "sentiment": {}}
     if not urls:
         return fallback, "ok"
     if not api_key:
@@ -44,15 +44,24 @@ def classify_urls(urls: list[str], item_names: list[str], api_key: str) -> tuple
         "specific tracked product; 'EV & Renewables' is electric vehicles, batteries, "
         "solar, wind, or other clean-energy news; 'Other Commodities' is anything "
         "else energy/commodity related (gas, coal, metals, shipping, geopolitics, etc).\n\n"
+        "Also judge, from the URL slug alone, the likely price direction for whichever "
+        "item/category you filed it under: 'up' if the story would plausibly push that "
+        "market's prices higher (e.g. supply disruption, demand surge, conflict, "
+        "sanctions), 'down' if it would plausibly push prices lower (e.g. supply surplus, "
+        "demand weakness, ceasefire/de-escalation), or 'neutral' if the slug gives no real "
+        "basis to call a direction (e.g. a regulatory hearing, a corporate announcement "
+        "with no clear price angle) -- default to 'neutral' whenever genuinely unsure, "
+        "never guess just to pick a side.\n\n"
         "Return ONLY strict JSON, no markdown fences, no commentary, in exactly "
         "this shape:\n"
         '{"items": {"<item name>": ["<url>", ...]}, '
         '"categories": {"Crude": ["<url>", ...], "Products": [...], '
-        '"EV & Renewables": [...], "Other Commodities": [...]}}\n\n'
-        "Every URL from the input must appear exactly once in the output, either "
-        "under exactly one item name (use the item names exactly as given above) "
-        "or under exactly one of the four category names above. If unsure between "
-        "a category, use 'Other Commodities'.\n\n"
+        '"EV & Renewables": [...], "Other Commodities": [...]}, '
+        '"sentiment": {"<url>": "up"|"down"|"neutral"}}\n\n'
+        "Every URL from the input must appear exactly once under an item name or a "
+        "category (use the item names exactly as given above; if unsure between "
+        "categories, use 'Other Commodities'), and exactly once as a key in "
+        "'sentiment'.\n\n"
         f"URLs: {json.dumps(urls)}"
     )
 
@@ -76,6 +85,10 @@ def classify_urls(urls: list[str], item_names: list[str], api_key: str) -> tuple
         parsed = json.loads(content)
         if not isinstance(parsed, dict) or "categories" not in parsed or "items" not in parsed:
             raise ValueError(f"unexpected shape: {parsed!r}")
+        parsed.setdefault("sentiment", {})
+        parsed["sentiment"] = {
+            url: value for url, value in parsed["sentiment"].items() if value in ("up", "down", "neutral")
+        }
         return parsed, "ok"
     except Exception as exc:
         logger.warning("DeepSeek news classification failed, defaulting to general: %s", exc)

@@ -110,6 +110,7 @@ class NewsOut(BaseModel):
     headline: str
     url: Optional[str] = None
     source: Optional[str] = None
+    sentiment: Optional[str] = None
     collected_at: datetime
 
 

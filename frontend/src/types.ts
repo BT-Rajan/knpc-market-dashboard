@@ -29,6 +29,7 @@ export interface NewsOut {
   headline: string
   url: string | null
   source: string | null
+  sentiment: string | null
   collected_at: string
 }
 
