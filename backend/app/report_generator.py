@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Item, PriceHistory, NewsItem
 from app.config import QUARTER_MONTHS, MOG_DIVISION_NAME, REPORTS_DIR
-from app.services import collapse_rows_to_weekly, resolve_ai_key
+from app.services import collapse_rows_to_weekly, dedupe_last_per_day, resolve_ai_key
 from app.ai_client import ask_ai
 from app.report_charts import line_chart, grouped_bar_chart, signed_bar_chart
 
@@ -163,7 +163,7 @@ def _rows_for(db: Session, code: str, start: date, end: date):
     rows = (
         db.query(PriceHistory)
         .filter(PriceHistory.item_id == item.id, PriceHistory.price_date >= start, PriceHistory.price_date <= end)
-        .order_by(PriceHistory.price_date)
+        .order_by(PriceHistory.price_date, PriceHistory.collected_at)
         .all()
     )
     return item, rows
@@ -190,14 +190,18 @@ def _stats_from_series(item, series: list[tuple[date, float]], readings: int) ->
 
 
 def get_benchmark_stats(db: Session, start: date, end: date) -> list[dict]:
-    """Daily stats for each crude benchmark tracked over [start, end]."""
+    """Daily stats for each crude benchmark tracked over [start, end]. Uses
+    the latest reading per day -- scraping is append-only, so a day can have
+    more than one row (e.g. a manual "Scrape now" alongside the daily 7am
+    Kuwait job), and open/close/high/low need one representative price per
+    day, not one per row."""
     stats = []
     for code in CRUDE_CODES:
         item, rows = _rows_for(db, code, start, end)
         if not item or not rows:
             continue
-        series = [(r.price_date, r.price) for r in rows]
-        stats.append(_stats_from_series(item, series, len(rows)))
+        series = [(r.price_date, r.price) for r in dedupe_last_per_day(rows)]
+        stats.append(_stats_from_series(item, series, len(series)))
     return stats
 
 
@@ -227,7 +231,7 @@ def get_monthly_averages(db: Session, start: date, end: date, codes: list[str], 
         if not item:
             per_code[code] = {}
             continue
-        series = collapse_rows_to_weekly(rows) if weekly else [(r.price_date, r.price) for r in rows]
+        series = collapse_rows_to_weekly(rows) if weekly else [(r.price_date, r.price) for r in dedupe_last_per_day(rows)]
         buckets = defaultdict(list)
         for d, p in series:
             buckets[_month_key(d)].append(p)

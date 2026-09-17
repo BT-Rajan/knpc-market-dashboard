@@ -116,6 +116,17 @@ def _seed_email_templates(db):
             "<p>{{item_name}} moved to {{price}} {{unit}} ({{change_pct}}% change).</p>"
             "<p>Regards,<br>KNPC Market Intelligence Dashboard</p>",
         ),
+        (
+            "Daily Price Movement Report",
+            "KNPC Daily Price Movement Report — {{report_date}}",
+            "<p>Dear {{recipient_name}},</p>"
+            "<p>Here is the daily price movement summary for {{report_date}} "
+            "(as of {{report_time}} Kuwait time):</p>"
+            "{{price_table}}"
+            "<p style=\"font-size:11px;color:#5a6678;margin-top:16px;\">"
+            "Automated daily report from the KNPC Market Intelligence Dashboard.</p>"
+            "<p>Regards,<br>KNPC Market Intelligence Dashboard</p>",
+        ),
     ]
     for name, subject, body_html in defaults:
         if not db.query(EmailTemplate).filter(EmailTemplate.name == name).first():

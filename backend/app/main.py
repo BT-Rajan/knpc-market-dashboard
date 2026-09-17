@@ -11,6 +11,7 @@ from app.migrations import run_additive_migrations
 from app.seed import seed
 from app.scraper import scheduler as scrape_scheduler
 from app import email_scheduler
+from app import daily_report_scheduler
 from app.routers import auth, dashboard, admin, export, ai, reports, email
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -41,6 +42,7 @@ def on_startup():
     seed()
     scrape_scheduler.start()
     email_scheduler.start()
+    daily_report_scheduler.start()
 
 
 @app.get("/api/health")

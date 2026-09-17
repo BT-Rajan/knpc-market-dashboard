@@ -98,7 +98,7 @@ function StatTable({ title, stats, loading }: { title: string; stats: Stat[]; lo
   )
 }
 
-function QuarterlySection({ onGenerated }: { onGenerated: () => void }) {
+function QuarterlySection({ onGenerated, onDownload }: { onGenerated: () => void; onDownload: (filename: string) => void }) {
   const [year, setYear] = useState(new Date().getFullYear())
   const [quarter, setQuarter] = useState<typeof QUARTERS[number]>('Q1')
   const [mode, setMode] = useState<Mode>('data_only')
@@ -138,6 +138,7 @@ function QuarterlySection({ onGenerated }: { onGenerated: () => void }) {
         setMessage(`✓ Report generated: ${result.filename}`)
         setOutlookNotes('')
         onGenerated()
+        onDownload(result.filename)
       }
     } catch (err) {
       setMessage(`Error generating report: ${err}`)
@@ -206,7 +207,7 @@ function QuarterlySection({ onGenerated }: { onGenerated: () => void }) {
   )
 }
 
-function MonthlySection({ onGenerated }: { onGenerated: () => void }) {
+function MonthlySection({ onGenerated, onDownload }: { onGenerated: () => void; onDownload: (filename: string) => void }) {
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth() + 1)
@@ -245,6 +246,7 @@ function MonthlySection({ onGenerated }: { onGenerated: () => void }) {
       if (result.status === 'success') {
         setMessage(`✓ Report generated: ${result.filename}`)
         onGenerated()
+        onDownload(result.filename)
       }
     } catch (err) {
       setMessage(`Error generating report: ${err}`)
@@ -310,6 +312,7 @@ function MonthlySection({ onGenerated }: { onGenerated: () => void }) {
 
 export default function Reports() {
   const [reports, setReports] = useState<ReportFile[]>([])
+  const [downloadError, setDownloadError] = useState<string | null>(null)
 
   const loadReports = async () => {
     try {
@@ -335,20 +338,32 @@ export default function Reports() {
       const a = document.createElement('a')
       a.href = url
       a.download = filename
+      document.body.appendChild(a)
       a.click()
+      a.remove()
       URL.revokeObjectURL(url)
+      setDownloadError(null)
     } catch (err) {
       console.error('Error downloading report:', err)
+      setDownloadError(`Couldn't download ${filename}: ${err instanceof Error ? err.message : err}`)
     }
   }
 
   return (
     <div>
-      <QuarterlySection onGenerated={loadReports} />
-      <MonthlySection onGenerated={loadReports} />
+      <QuarterlySection onGenerated={loadReports} onDownload={downloadReport} />
+      <MonthlySection onGenerated={loadReports} onDownload={downloadReport} />
 
       <div className="panel" style={{ padding: 16 }}>
         <div className="eyebrow" style={{ marginBottom: 12 }}>Published Reports ({reports.length})</div>
+        {downloadError && (
+          <div style={{
+            marginBottom: 12, padding: '8px', borderRadius: 4,
+            backgroundColor: 'rgba(239,68,68,0.1)', color: '#ef4444', fontSize: 13,
+          }}>
+            {downloadError}
+          </div>
+        )}
         {reports.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {reports.map((report, i) => (

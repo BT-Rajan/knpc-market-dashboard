@@ -266,3 +266,15 @@ def list_email_logs(limit: int = 200, db: Session = Depends(get_db)):
         .limit(limit)
         .all()
     )
+
+
+# --- Daily Price Movement Report (runs automatically at 8am Kuwait time;
+# this lets an admin fire it on demand to verify setup without waiting) ---
+
+@router.post("/daily-price-report/send-now")
+def send_daily_price_report_now(db: Session = Depends(get_db)):
+    from app.daily_report_scheduler import send_daily_price_movement_report
+    result = send_daily_price_movement_report(db)
+    if result["status"] == "skipped":
+        raise HTTPException(status_code=400, detail=f"Not sent: {result['reason'].replace('_', ' ')}")
+    return result

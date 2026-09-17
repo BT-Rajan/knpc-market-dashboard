@@ -300,6 +300,43 @@ function detectPlaceholders(template: EmailTemplateOut | undefined): string[] {
   return Array.from(found)
 }
 
+function DailyPriceReportCard() {
+  const [sending, setSending] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+  const [ok, setOk] = useState(true)
+
+  async function sendNow() {
+    setSending(true)
+    setMessage(null)
+    try {
+      const res = await api.post<{ sent: number; failed: number }>('/api/admin/email/daily-price-report/send-now')
+      setOk(true)
+      setMessage(`Sent: ${res.sent} succeeded, ${res.failed} failed. (Runs automatically every day at 8:00 AM Kuwait time.)`)
+    } catch (e) {
+      setOk(false)
+      setMessage(e instanceof ApiError ? e.message : 'Send failed')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="panel" style={{ padding: 18 }}>
+      <div className="eyebrow" style={{ marginBottom: 8 }}>Daily Price Movement Report</div>
+      <div style={{ fontSize: 12.5, color: 'var(--text-dim)', marginBottom: 12 }}>
+        Sends automatically every day at 8:00 AM Kuwait time to all active recipients above.
+        Use this to send a test copy right now.
+      </div>
+      <button className="btn" onClick={sendNow} disabled={sending}>
+        {sending ? 'Sending…' : 'Send test now'}
+      </button>
+      {message && (
+        <div style={{ marginTop: 10, fontSize: 13, color: ok ? 'var(--positive)' : 'var(--negative)' }}>{message}</div>
+      )}
+    </div>
+  )
+}
+
 function Send() {
   const [recipients, setRecipients] = useState<EmailRecipientOut[]>([])
   const [templates, setTemplates] = useState<EmailTemplateOut[]>([])
@@ -398,6 +435,8 @@ function Send() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 560 }}>
+      <DailyPriceReportCard />
+
       <div className="panel" style={{ padding: 18 }}>
         <div className="eyebrow" style={{ marginBottom: 12 }}>Template</div>
         <select style={inputStyle} value={templateId ?? ''} onChange={(e) => setTemplateId(Number(e.target.value))}>

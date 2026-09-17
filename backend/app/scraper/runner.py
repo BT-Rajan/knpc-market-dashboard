@@ -78,20 +78,16 @@ def scrape_item(db: Session, item: Item) -> bool:
                 price = extract_value(source, resp)
                 price_date = date.today()
 
-            existing = (
-                db.query(PriceHistory)
-                .filter(PriceHistory.item_id == item.id, PriceHistory.price_date == price_date)
-                .first()
-            )
-            if existing:
-                existing.price = price
-                existing.source_id = source.id
-                existing.collected_at = datetime.utcnow()
-            else:
-                db.add(PriceHistory(
-                    item_id=item.id, source_id=source.id,
-                    price_date=price_date, price=price,
-                ))
+            # Append-only: every successful scrape is a new row, even if one
+            # was already recorded for this item today (a manual "Scrape now",
+            # the daily 7am Kuwait job, and the admin's configured interval
+            # can all fire on the same date). Never update/overwrite an
+            # existing reading -- see app/models.py for why price_history no
+            # longer has a unique constraint on (item_id, price_date).
+            db.add(PriceHistory(
+                item_id=item.id, source_id=source.id,
+                price_date=price_date, price=price,
+            ))
 
             _log(db, item.code, source.name, "success", f"price={price} (date={price_date})")
             db.commit()

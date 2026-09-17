@@ -39,3 +39,23 @@ def run_additive_migrations(engine: Engine):
         with engine.begin() as conn:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}"))
         logger.info("Migration: added %s.%s", table, column)
+
+    _drop_price_history_unique_constraint(engine, inspector, existing_tables)
+
+
+def _drop_price_history_unique_constraint(engine: Engine, inspector, existing_tables):
+    """One-time cleanup: price_history used to have a UNIQUE(item_id,
+    price_date) key, which made every scrape after the first one that day
+    silently overwrite the earlier reading. Scraping is now append-only (see
+    app/scraper/runner.py), so that constraint has to go -- otherwise the
+    second insert on the same day just raises an IntegrityError. Replaced by
+    a plain (non-unique) index of the same shape for query performance,
+    added via create_all()/the model's __table_args__."""
+    if "price_history" not in existing_tables:
+        return
+    existing_index_names = {ix["name"] for ix in inspector.get_indexes("price_history")}
+    if "uq_item_price_date" not in existing_index_names:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE price_history DROP INDEX uq_item_price_date"))
+    logger.info("Migration: dropped price_history.uq_item_price_date (scraping is now append-only)")

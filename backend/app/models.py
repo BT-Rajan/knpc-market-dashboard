@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Float, Boolean, Text, DateTime, Date, JSON,
-    ForeignKey, UniqueConstraint
+    ForeignKey, UniqueConstraint, Index
 )
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -57,8 +57,14 @@ class PriceHistory(Base):
 
     item = relationship("Item", back_populates="prices")
 
+    # Every scrape appends a new row -- a repeat run on the same calendar day
+    # (the daily 7am Kuwait job, a manual "Scrape now", or the admin's
+    # configured interval all firing on the same date) is a new reading, not
+    # a correction of the earlier one, so this is intentionally NOT unique on
+    # (item_id, price_date) any more. Kept as a plain index since every
+    # dashboard/report query still filters and sorts on this pair.
     __table_args__ = (
-        UniqueConstraint("item_id", "price_date", name="uq_item_price_date"),
+        Index("ix_item_price_date", "item_id", "price_date"),
     )
 
 

@@ -79,7 +79,7 @@ def _current_month_rows(db: Session, item_id: int):
 
 def monthly_daily_series(db: Session, item_id: int):
     """Daily prices for every day recorded so far in the current calendar month."""
-    rows = _current_month_rows(db, item_id)
+    rows = dedupe_last_per_day(_current_month_rows(db, item_id))
     return [{"price_date": r.price_date, "price": r.price} for r in rows]
 
 
@@ -135,19 +135,42 @@ def item_price_export_rows(db: Session, item: Item):
     )
     if item.category == "Products":
         return [{"date": we, "price": p} for we, p in collapse_rows_to_weekly(rows)]
-    return [{"date": r.price_date, "price": r.price} for r in rows]
+    return [{"date": r.price_date, "price": r.price} for r in dedupe_last_per_day(rows)]
+
+
+def dedupe_last_per_day(rows):
+    """Collapses possibly-multiple PriceHistory rows per calendar day down to
+    the latest one (by collected_at) for that day, preserving ascending
+    price_date order. Scraping is append-only (see app/scraper/runner.py),
+    so a day can now have more than one reading -- e.g. the 7am Kuwait job
+    plus a manual "Scrape now" -- and any "one point per day" chart or stat
+    needs to pick a single representative reading rather than plot/average
+    duplicates as if they were separate days."""
+    latest_by_day = {}
+    for r in rows:
+        existing = latest_by_day.get(r.price_date)
+        if existing is None or (r.collected_at or existing.collected_at) >= (existing.collected_at or r.collected_at):
+            latest_by_day[r.price_date] = r
+    return [latest_by_day[d] for d in sorted(latest_by_day)]
 
 
 def latest_two_prices(db: Session, item_id: int):
+    """The most recent reading, and the most recent reading from a *different*,
+    earlier calendar day -- not just row-2, since append-only scraping can
+    put two or more rows on the same day (the daily job plus a manual
+    "Scrape now", say), which would otherwise make "previous" a same-day
+    duplicate instead of an actual prior reading."""
     rows = (
         db.query(PriceHistory)
         .filter(PriceHistory.item_id == item_id)
-        .order_by(PriceHistory.price_date.desc())
-        .limit(2)
+        .order_by(PriceHistory.price_date.desc(), PriceHistory.collected_at.desc())
+        .limit(20)
         .all()
     )
-    current = rows[0] if len(rows) > 0 else None
-    previous = rows[1] if len(rows) > 1 else None
+    if not rows:
+        return None, None
+    current = rows[0]
+    previous = next((r for r in rows[1:] if r.price_date != current.price_date), None)
     return current, previous
 
 
@@ -235,3 +258,77 @@ def resolve_email_credentials(db: Session) -> tuple[str, str]:
     address = row.gmail_address or ""
     password = decrypt(row.gmail_app_password_encrypted or "") if row.gmail_app_password_encrypted else ""
     return address, password
+
+
+def daily_price_movement_rows(db: Session):
+    """Every active item (Crude first, then Products) with its latest price
+    and day-over-day change -- the shared data behind both the Daily Price
+    Movement email and, if ever needed, an on-page equivalent. Uses the same
+    trend_fields()/latest_two_prices() the live ticker uses, so the email
+    always matches what's on the dashboard at send time."""
+    items = db.query(Item).filter(Item.active == True).order_by(Item.category, Item.name).all()  # noqa: E712
+    out = []
+    for item in items:
+        fields = trend_fields(db, item.id)
+        out.append({
+            "code": item.code, "name": item.name, "category": item.category, "unit": item.unit,
+            **fields,
+        })
+    return out
+
+
+def render_daily_price_movement_table_html(rows: list[dict]) -> str:
+    """Renders daily_price_movement_rows() as an HTML table for the Daily
+    Price Movement Report email -- price, direction, and % change for every
+    tracked crude benchmark and product, grouped the same way the dashboard
+    nav groups them (Crude, then Products)."""
+    positive, negative, dim = "#1a7f37", "#c2694f", "#5a6678"
+
+    def _rows_html(category_rows):
+        cells = []
+        for r in category_rows:
+            price = f"{r['current_price']:.2f}" if r["current_price"] is not None else "—"
+            pct = r["daily_change_pct"]
+            if pct is None:
+                direction, pct_html = "—", "—"
+            else:
+                arrow = "▲" if pct > 0 else ("▼" if pct < 0 else "▬")
+                color = positive if pct > 0 else (negative if pct < 0 else dim)
+                direction = f'<span style="color:{color};">{arrow}</span>'
+                pct_html = f'<span style="color:{color};">{pct:+.2f}%</span>'
+            cells.append(
+                "<tr>"
+                f'<td style="padding:6px 10px;border-bottom:1px solid #e5e5e5;">{r["name"]}</td>'
+                f'<td style="padding:6px 10px;border-bottom:1px solid #e5e5e5;text-align:right;">{price} {r["unit"]}</td>'
+                f'<td style="padding:6px 10px;border-bottom:1px solid #e5e5e5;text-align:center;">{direction}</td>'
+                f'<td style="padding:6px 10px;border-bottom:1px solid #e5e5e5;text-align:right;">{pct_html}</td>'
+                "</tr>"
+            )
+        return "".join(cells)
+
+    categories = []
+    for cat in ["Crude", "Products"]:
+        cat_rows = [r for r in rows if r["category"] == cat]
+        if cat_rows:
+            categories.append((cat, cat_rows))
+    # Any other/future category, appended after the two expected ones.
+    other = [r for r in rows if r["category"] not in ("Crude", "Products")]
+    if other:
+        categories.append(("Other", other))
+
+    if not categories:
+        return "<p>No active items to report.</p>"
+
+    sections = []
+    for cat, cat_rows in categories:
+        sections.append(
+            f'<h3 style="font-family:Arial,sans-serif;color:#1c3f5f;margin:18px 0 6px;">{cat}</h3>'
+            '<table style="border-collapse:collapse;width:100%;font-family:Arial,sans-serif;font-size:13px;">'
+            '<thead><tr>'
+            '<th style="padding:6px 10px;text-align:left;border-bottom:2px solid #1c3f5f;">Item</th>'
+            '<th style="padding:6px 10px;text-align:right;border-bottom:2px solid #1c3f5f;">Price</th>'
+            '<th style="padding:6px 10px;text-align:center;border-bottom:2px solid #1c3f5f;">Direction</th>'
+            '<th style="padding:6px 10px;text-align:right;border-bottom:2px solid #1c3f5f;">% Change</th>'
+            "</tr></thead><tbody>" + _rows_html(cat_rows) + "</tbody></table>"
+        )
+    return "".join(sections)
