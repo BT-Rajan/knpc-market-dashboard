@@ -6,7 +6,6 @@ export default function AIPanel({ itemCode, onClose }: { itemCode: string | null
   const [provider, setProvider] = useState<'deepseek' | 'claude'>('claude')
   const [status, setStatus] = useState<AIProviderStatus | null>(null)
   const [question, setQuestion] = useState('')
-  const [useContext, setUseContext] = useState(true)
   const [answer, setAnswer] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -32,7 +31,7 @@ export default function AIPanel({ itemCode, onClose }: { itemCode: string | null
       const res = await api.post<AIAskResponse>('/api/ai/ask', {
         provider,
         question,
-        item_code: useContext ? itemCode : null,
+        item_code: itemCode,
       })
       setAnswer(res.answer)
     } catch (e) {
@@ -71,17 +70,6 @@ export default function AIPanel({ itemCode, onClose }: { itemCode: string | null
             <option value="deepseek">DeepSeek{status && !status.deepseek_configured ? ' (not configured)' : ''}</option>
           </select>
         </div>
-
-        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: -4 }}>
-          Answers are grounded in every tracked crude benchmark and product's latest price and recent headlines — ask about anything on the dashboard, not just one item.
-        </div>
-
-        {itemCode && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-muted)' }}>
-            <input type="checkbox" checked={useContext} onChange={(e) => setUseContext(e.target.checked)} />
-            Also focus on {itemCode} price &amp; news specifically
-          </label>
-        )}
 
         <div className="field">
           <label>Question</label>
