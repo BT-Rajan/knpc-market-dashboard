@@ -1,14 +1,27 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, ApiError } from '../api/client'
-import { AIAskResponse } from '../types'
+import { AIAskResponse, AIProviderStatus } from '../types'
 
 export default function AIPanel({ itemCode, onClose }: { itemCode: string | null; onClose: () => void }) {
   const [provider, setProvider] = useState<'deepseek' | 'claude'>('claude')
+  const [status, setStatus] = useState<AIProviderStatus | null>(null)
   const [question, setQuestion] = useState('')
   const [useContext, setUseContext] = useState(true)
   const [answer, setAnswer] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    api.get<AIProviderStatus>('/api/ai/providers').then((s) => {
+      setStatus(s)
+      // Default to whichever provider is actually configured, rather than
+      // always starting on Claude -- previously this defaulted to 'claude'
+      // unconditionally, so asking a question with only DeepSeek configured
+      // failed with "Claude API key is not configured" until the person
+      // noticed and switched the dropdown themselves.
+      if (!s.claude_configured && s.deepseek_configured) setProvider('deepseek')
+    })
+  }, [])
 
   async function ask() {
     if (!question.trim()) return
@@ -54,8 +67,8 @@ export default function AIPanel({ itemCode, onClose }: { itemCode: string | null
         <div className="field">
           <label>Provider</label>
           <select value={provider} onChange={(e) => setProvider(e.target.value as 'deepseek' | 'claude')}>
-            <option value="claude">Claude</option>
-            <option value="deepseek">DeepSeek</option>
+            <option value="claude">Claude{status && !status.claude_configured ? ' (not configured)' : ''}</option>
+            <option value="deepseek">DeepSeek{status && !status.deepseek_configured ? ' (not configured)' : ''}</option>
           </select>
         </div>
 

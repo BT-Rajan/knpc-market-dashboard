@@ -4,11 +4,23 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.auth import get_current_user
-from app.schemas import AIAskRequest, AIAskResponse
-from app.services import get_item_by_code_or_404, trend_fields, recent_news, resolve_ai_key
+from app.schemas import AIAskRequest, AIAskResponse, AICredentialsOut
+from app.services import get_item_by_code_or_404, trend_fields, recent_news, resolve_ai_key, get_ai_credentials_row
 from app.ai_client import ask_deepseek, ask_claude
 
 router = APIRouter(prefix="/api/ai", tags=["ai"], dependencies=[Depends(get_current_user)])
+
+
+@router.get("/providers", response_model=AICredentialsOut)
+def get_provider_status(db: Session = Depends(get_db)):
+    """Which providers currently have a key configured -- available to any
+    signed-in user (not just admins) so the Ask-AI panel can default to,
+    and label, a provider that's actually usable instead of guessing."""
+    row = get_ai_credentials_row(db)
+    return AICredentialsOut(
+        deepseek_configured=bool(row.deepseek_api_key),
+        claude_configured=bool(row.claude_api_key),
+    )
 
 
 def _build_context(db: Session, item_code: str | None) -> str:

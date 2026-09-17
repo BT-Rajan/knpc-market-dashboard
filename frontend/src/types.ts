@@ -108,6 +108,11 @@ export interface AIAskResponse {
   answer: string
 }
 
+export interface AIProviderStatus {
+  deepseek_configured: boolean
+  claude_configured: boolean
+}
+
 export interface EmailRecipientOut {
   id: number
   email: string
