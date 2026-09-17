@@ -83,6 +83,14 @@ DAILY_SCRAPE_HOUR_KWT = int(os.getenv("DAILY_SCRAPE_HOUR_KWT", 7))
 DAILY_SCRAPE_MINUTE_KWT = int(os.getenv("DAILY_SCRAPE_MINUTE_KWT", 0))
 DAILY_PRICE_EMAIL_HOUR_KWT = int(os.getenv("DAILY_PRICE_EMAIL_HOUR_KWT", 8))
 DAILY_PRICE_EMAIL_MINUTE_KWT = int(os.getenv("DAILY_PRICE_EMAIL_MINUTE_KWT", 0))
+# Name of the EmailTemplate whose report_date/report_time/price_table
+# variables are always computed fresh server-side at send time -- never
+# taken from client/stored input, since the client has no way to supply a
+# correct price table. Shared by the always-on cron sender, the "send test
+# now" button, the generic distribution-list send, and one-off scheduled
+# sends, so all four paths compute the same live data instead of only some
+# of them doing so.
+DAILY_PRICE_EMAIL_TEMPLATE_NAME = "Daily Price Movement Report"
 SCRAPE_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"

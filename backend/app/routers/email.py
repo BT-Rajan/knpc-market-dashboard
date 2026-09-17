@@ -16,8 +16,13 @@ from app.schemas import (
     EmailSendRequest, EmailSendResponse, EmailSendResult,
     EmailLogOut, ScheduledEmailCreate, ScheduledEmailOut,
 )
-from app.services import get_email_credentials_row, resolve_email_credentials
+from app.services import (
+    get_email_credentials_row,
+    resolve_email_credentials,
+    build_daily_price_movement_variables,
+)
 from app.email_batch import send_batch
+from app.config import DAILY_PRICE_EMAIL_TEMPLATE_NAME
 from app.crypto import encrypt
 from app.config import REPORTS_DIR
 
@@ -163,6 +168,20 @@ def update_credentials(body: EmailCredentialsUpdate, db: Session = Depends(get_d
 
 # --- Send ---
 
+def _resolve_send_variables(db: Session, template: EmailTemplate, variables: dict) -> dict:
+    """Client-supplied variables, except for the Daily Price Movement Report
+    template: its report_date/report_time/price_table are always computed
+    fresh here, overriding anything the client sent. The client has no way
+    to know the current price table, so a client-supplied value for these
+    (typically blank, since the send form doesn't know they're server-only)
+    would otherwise silently go out as a blank report -- this makes the
+    generic send/schedule paths match the dedicated "send now" button
+    instead of quietly diverging from it."""
+    if template.name == DAILY_PRICE_EMAIL_TEMPLATE_NAME:
+        return {**variables, **build_daily_price_movement_variables(db)}
+    return variables
+
+
 @router.post("/send", response_model=EmailSendResponse)
 def send_to_distribution_list(body: EmailSendRequest, db: Session = Depends(get_db)):
     template = db.get(EmailTemplate, body.template_id)
@@ -189,7 +208,7 @@ def send_to_distribution_list(body: EmailSendRequest, db: Session = Depends(get_
             raise HTTPException(status_code=404, detail=f"Report not found: {body.attach_report_filename}")
 
     sent, failed, results = send_batch(
-        db, template, recipients, body.variables, attachment_path,
+        db, template, recipients, _resolve_send_variables(db, template, body.variables), attachment_path,
         gmail_address, gmail_app_password, credentials_row,
     )
     return EmailSendResponse(sent=sent, failed=failed, results=[EmailSendResult(**r) for r in results])

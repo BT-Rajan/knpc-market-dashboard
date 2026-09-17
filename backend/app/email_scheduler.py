@@ -10,9 +10,13 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from app.db import SessionLocal
 from app.models import ScheduledEmail, EmailTemplate, EmailRecipient
-from app.services import get_email_credentials_row, resolve_email_credentials
+from app.services import (
+    get_email_credentials_row,
+    resolve_email_credentials,
+    build_daily_price_movement_variables,
+)
 from app.email_batch import send_batch
-from app.config import REPORTS_DIR
+from app.config import REPORTS_DIR, DAILY_PRICE_EMAIL_TEMPLATE_NAME
 
 logger = logging.getLogger("knpc.email_scheduler")
 
@@ -52,8 +56,16 @@ def _dispatch(db, sched: ScheduledEmail):
     gmail_address, gmail_app_password = resolve_email_credentials(db)
     credentials_row = get_email_credentials_row(db)
 
+    # For the Daily Price Movement Report, report_date/report_time/price_table
+    # must reflect prices as of the moment this actually fires, not whatever
+    # was stored (or left blank) when the send was originally scheduled --
+    # otherwise a report scheduled ahead of time always goes out blank/stale.
+    variables = sched.variables or {}
+    if template.name == DAILY_PRICE_EMAIL_TEMPLATE_NAME:
+        variables = {**variables, **build_daily_price_movement_variables(db)}
+
     sent, failed, _results = send_batch(
-        db, template, recipients, sched.variables or {}, attachment_path,
+        db, template, recipients, variables, attachment_path,
         gmail_address, gmail_app_password, credentials_row,
     )
 

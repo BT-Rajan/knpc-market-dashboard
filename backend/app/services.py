@@ -1,11 +1,12 @@
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models import Item, PriceHistory, NewsItem, AICredentials, EmailCredentials
-from app.config import DEEPSEEK_API_KEY, CLAUDE_API_KEY
+from app.config import DEEPSEEK_API_KEY, CLAUDE_API_KEY, KUWAIT_TZ
 from app.crypto import decrypt
 from app.ai_news_classifier import NEWS_CATEGORIES
 
@@ -332,3 +333,19 @@ def render_daily_price_movement_table_html(rows: list[dict]) -> str:
             "</tr></thead><tbody>" + _rows_html(cat_rows) + "</tbody></table>"
         )
     return "".join(sections)
+
+
+def build_daily_price_movement_variables(db: Session) -> dict:
+    """report_date / report_time / price_table for the Daily Price Movement
+    Report template, computed fresh from PriceHistory right now. This is the
+    single source of truth for those three variables -- callers must use it
+    instead of accepting them from client/stored input, since the client has
+    no legitimate way to supply a correct price table and any client-typed
+    value for it would just be blank."""
+    now_kwt = datetime.now(ZoneInfo(KUWAIT_TZ))
+    rows = daily_price_movement_rows(db)
+    return {
+        "report_date": now_kwt.strftime("%d %b %Y"),
+        "report_time": now_kwt.strftime("%H:%M"),
+        "price_table": render_daily_price_movement_table_html(rows),
+    }

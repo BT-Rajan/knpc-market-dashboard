@@ -6,7 +6,6 @@ dispatcher (app/email_scheduler.py) -- this one is always-on and not tied to
 any admin-created ScheduledEmail row.
 """
 import logging
-from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -15,19 +14,23 @@ from apscheduler.triggers.cron import CronTrigger
 from app.db import SessionLocal
 from app.models import EmailTemplate, EmailRecipient
 from app.services import (
-    daily_price_movement_rows,
-    render_daily_price_movement_table_html,
+    build_daily_price_movement_variables,
     get_email_credentials_row,
     resolve_email_credentials,
 )
 from app.email_batch import send_batch
-from app.config import KUWAIT_TZ, DAILY_PRICE_EMAIL_HOUR_KWT, DAILY_PRICE_EMAIL_MINUTE_KWT
+from app.config import (
+    KUWAIT_TZ,
+    DAILY_PRICE_EMAIL_HOUR_KWT,
+    DAILY_PRICE_EMAIL_MINUTE_KWT,
+    DAILY_PRICE_EMAIL_TEMPLATE_NAME,
+)
 
 logger = logging.getLogger("knpc.daily_report_scheduler")
 
 _scheduler = BackgroundScheduler()
 _JOB_ID = "daily_price_movement_email"
-TEMPLATE_NAME = "Daily Price Movement Report"
+TEMPLATE_NAME = DAILY_PRICE_EMAIL_TEMPLATE_NAME
 
 
 def send_daily_price_movement_report(db=None) -> dict:
@@ -55,13 +58,7 @@ def send_daily_price_movement_report(db=None) -> dict:
             logger.warning("Daily price movement report: Gmail sender not configured -- skipping")
             return {"status": "skipped", "reason": "no_sender_configured"}
 
-        now_kwt = datetime.now(ZoneInfo(KUWAIT_TZ))
-        rows = daily_price_movement_rows(db)
-        variables = {
-            "report_date": now_kwt.strftime("%d %b %Y"),
-            "report_time": now_kwt.strftime("%H:%M"),
-            "price_table": render_daily_price_movement_table_html(rows),
-        }
+        variables = build_daily_price_movement_variables(db)
 
         credentials_row = get_email_credentials_row(db)
         sent, failed, results = send_batch(

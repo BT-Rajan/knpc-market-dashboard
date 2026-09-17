@@ -288,14 +288,27 @@ function GmailSettings() {
 
 // --- Send ---
 
+// Kept in sync with app.config.DAILY_PRICE_EMAIL_TEMPLATE_NAME on the backend.
+const DAILY_PRICE_REPORT_TEMPLATE_NAME = 'Daily Price Movement Report'
+// These three are always computed fresh by the backend at send time for
+// that template (see build_daily_price_movement_variables) -- never accept
+// them as user input here, or a value typed (or left blank) in this form
+// would silently override the real price table with blank/stale text.
+const DAILY_PRICE_REPORT_AUTO_VARS = ['report_date', 'report_time', 'price_table']
+
 function detectPlaceholders(template: EmailTemplateOut | undefined): string[] {
   if (!template) return []
   const text = template.subject + ' ' + template.body_html
   const found = new Set<string>()
   const re = /\{\{\s*(\w+)\s*\}\}/g
   let m
+  const autoSupplied = new Set(
+    template.name === DAILY_PRICE_REPORT_TEMPLATE_NAME
+      ? ['recipient_name', ...DAILY_PRICE_REPORT_AUTO_VARS]
+      : ['recipient_name'], // auto-supplied server-side, not user input
+  )
   while ((m = re.exec(text)) !== null) {
-    if (m[1] !== 'recipient_name') found.add(m[1]) // auto-supplied server-side, not user input
+    if (!autoSupplied.has(m[1])) found.add(m[1])
   }
   return Array.from(found)
 }
@@ -472,7 +485,9 @@ function Send() {
         <div className="eyebrow" style={{ marginBottom: 12 }}>Template variables</div>
         {placeholders.length === 0 ? (
           <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>
-            This template has no variables besides the recipient's name (filled in automatically).
+            {selectedTemplate?.name === DAILY_PRICE_REPORT_TEMPLATE_NAME
+              ? "This template's date, time, and price table are computed automatically from the latest data when it's sent — nothing to fill in here."
+              : "This template has no variables besides the recipient's name (filled in automatically)."}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
