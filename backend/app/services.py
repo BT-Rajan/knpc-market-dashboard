@@ -261,6 +261,34 @@ def resolve_email_credentials(db: Session) -> tuple[str, str]:
     return address, password
 
 
+def build_market_overview_context(db: Session) -> str:
+    """Every active crude benchmark and product with its latest price and
+    day-over-day change, plus recent item-independent headlines by category
+    -- a site-wide snapshot so the Ask-AI panel can answer any question
+    about current crude/product content, not just whichever single item the
+    person happened to have open."""
+    rows = daily_price_movement_rows(db)
+    lines = ["Tracked prices (latest reading, day-over-day change):"]
+    if rows:
+        for r in rows:
+            price = f"{r['current_price']:.2f}" if r["current_price"] is not None else "n/a"
+            pct = f"{r['daily_change_pct']:+.2f}%" if r["daily_change_pct"] is not None else "n/a"
+            lines.append(f"- [{r['category']}] {r['name']}: {price} {r['unit']} ({pct}, as of {r['as_of']})")
+    else:
+        lines.append("- (no active items tracked yet)")
+
+    news_by_category = general_market_news_by_category(db, limit_per_category=6)
+    headline_lines = [
+        f"- [{bucket['category']}] {n.headline}" for bucket in news_by_category for n in bucket["news"]
+    ]
+    if headline_lines:
+        lines.append("")
+        lines.append("Recent general market headlines:")
+        lines += headline_lines
+
+    return "\n".join(lines)
+
+
 def daily_price_movement_rows(db: Session):
     """Every active item (Crude first, then Products) with its latest price
     and day-over-day change -- the shared data behind both the Daily Price

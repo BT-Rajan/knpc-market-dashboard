@@ -72,10 +72,14 @@ export default function AIPanel({ itemCode, onClose }: { itemCode: string | null
           </select>
         </div>
 
+        <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: -4 }}>
+          Answers are grounded in every tracked crude benchmark and product's latest price and recent headlines — ask about anything on the dashboard, not just one item.
+        </div>
+
         {itemCode && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-muted)' }}>
             <input type="checkbox" checked={useContext} onChange={(e) => setUseContext(e.target.checked)} />
-            Ground answer in {itemCode} price &amp; news
+            Also focus on {itemCode} price &amp; news specifically
           </label>
         )}
 

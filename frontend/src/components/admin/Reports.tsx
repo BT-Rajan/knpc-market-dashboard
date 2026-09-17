@@ -32,6 +32,15 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
+// A month-indexed calendar quarter, so the report form opens on the
+// quarter that's actually likely to have data (the current one) instead
+// of always defaulting to Q1 regardless of today's date -- generating a
+// report without changing this dropdown used to silently produce a blank
+// Jan-Mar report any time of year.
+function currentQuarter(): typeof QUARTERS[number] {
+  return QUARTERS[Math.floor(new Date().getMonth() / 3)]
+}
+
 const inputStyle = { width: '100%', padding: '8px', border: '1px solid var(--border)', borderRadius: 4 }
 
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
@@ -100,7 +109,7 @@ function StatTable({ title, stats, loading }: { title: string; stats: Stat[]; lo
 
 function QuarterlySection({ onGenerated, onDownload }: { onGenerated: () => void; onDownload: (filename: string) => void }) {
   const [year, setYear] = useState(new Date().getFullYear())
-  const [quarter, setQuarter] = useState<typeof QUARTERS[number]>('Q1')
+  const [quarter, setQuarter] = useState<typeof QUARTERS[number]>(currentQuarter())
   const [mode, setMode] = useState<Mode>('data_only')
   const [benchmarks, setBenchmarks] = useState<Stat[]>([])
   const [products, setProducts] = useState<Stat[]>([])

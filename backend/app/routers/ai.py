@@ -5,7 +5,14 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.auth import get_current_user
 from app.schemas import AIAskRequest, AIAskResponse, AICredentialsOut
-from app.services import get_item_by_code_or_404, trend_fields, recent_news, resolve_ai_key, get_ai_credentials_row
+from app.services import (
+    get_item_by_code_or_404,
+    trend_fields,
+    recent_news,
+    resolve_ai_key,
+    get_ai_credentials_row,
+    build_market_overview_context,
+)
 from app.ai_client import ask_deepseek, ask_claude
 
 router = APIRouter(prefix="/api/ai", tags=["ai"], dependencies=[Depends(get_current_user)])
@@ -24,19 +31,26 @@ def get_provider_status(db: Session = Depends(get_db)):
 
 
 def _build_context(db: Session, item_code: str | None) -> str:
-    if not item_code:
-        return ""
-    item = get_item_by_code_or_404(db, item_code)
-    fields = trend_fields(db, item.id)
-    news = recent_news(db, item.id, limit=5)
-    lines = [
-        f"Item: {item.name} ({item.category}, {item.unit})",
-        f"Current price: {fields['current_price']}, previous: {fields['previous_price']}, "
-        f"daily change: {fields['daily_change']} ({fields['daily_change_pct']}%), as of {fields['as_of']}",
-        "Recent headlines:",
-    ]
-    lines += [f"- {n.headline}" for n in news] or ["- (none collected yet)"]
-    return "\n".join(lines)
+    """Always includes a site-wide snapshot of every tracked crude benchmark
+    and product plus recent general headlines, so the AI can answer
+    anything about this system's crude/product content -- not only
+    questions about a single item. If item_code is given (the person is
+    focused on one item's page), a closer look at that item's own price and
+    headlines is appended on top of the overview."""
+    parts = [build_market_overview_context(db)]
+    if item_code:
+        item = get_item_by_code_or_404(db, item_code)
+        fields = trend_fields(db, item.id)
+        news = recent_news(db, item.id, limit=5)
+        lines = [
+            f"Focused item: {item.name} ({item.category}, {item.unit})",
+            f"Current price: {fields['current_price']}, previous: {fields['previous_price']}, "
+            f"daily change: {fields['daily_change']} ({fields['daily_change_pct']}%), as of {fields['as_of']}",
+            "Recent headlines for this item:",
+        ]
+        lines += [f"- {n.headline}" for n in news] or ["- (none collected yet)"]
+        parts.append("\n".join(lines))
+    return "\n\n".join(parts)
 
 
 def _ask_deepseek(prompt: str, api_key: str) -> str:
