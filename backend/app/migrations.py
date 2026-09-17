@@ -48,14 +48,29 @@ def _drop_price_history_unique_constraint(engine: Engine, inspector, existing_ta
     price_date) key, which made every scrape after the first one that day
     silently overwrite the earlier reading. Scraping is now append-only (see
     app/scraper/runner.py), so that constraint has to go -- otherwise the
-    second insert on the same day just raises an IntegrityError. Replaced by
-    a plain (non-unique) index of the same shape for query performance,
-    added via create_all()/the model's __table_args__."""
+    second insert on the same day just raises an IntegrityError.
+
+    This runs before Base.metadata.create_all(), and create_all() never adds
+    missing indexes to a table that already exists -- it only creates
+    brand-new tables from scratch. So the replacement (non-unique) index
+    from the model's __table_args__ would never actually get created on an
+    existing database if we relied on create_all() for it.
+
+    That ordering matters for another reason too: uq_item_price_date is
+    also the only index with item_id as its leftmost column, so InnoDB is
+    using it to satisfy the FK on price_history.item_id. Dropping it first
+    fails with 'Cannot drop index ... needed in a foreign key constraint'
+    (MySQL error 1553). So the replacement index has to be created *first*
+    -- giving the FK something else to stand on -- and only then can the
+    old unique one safely come out."""
     if "price_history" not in existing_tables:
         return
     existing_index_names = {ix["name"] for ix in inspector.get_indexes("price_history")}
     if "uq_item_price_date" not in existing_index_names:
         return
     with engine.begin() as conn:
+        if "ix_item_price_date" not in existing_index_names:
+            conn.execute(text("CREATE INDEX ix_item_price_date ON price_history (item_id, price_date)"))
+            logger.info("Migration: created price_history.ix_item_price_date")
         conn.execute(text("ALTER TABLE price_history DROP INDEX uq_item_price_date"))
     logger.info("Migration: dropped price_history.uq_item_price_date (scraping is now append-only)")
